@@ -1,0 +1,17 @@
+{
+  "name": "AI绘画工具",
+  "short_name": "AI绘画",
+  "description": "连接中转站绘画 API 的 AI 绘画工具",
+  "lang": "zh-CN",
+  "start_url": "./xiaoyi-paint.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0c",
+  "theme_color": "#0a0a0c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
