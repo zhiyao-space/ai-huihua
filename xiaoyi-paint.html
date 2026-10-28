@@ -258,7 +258,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .quote-bar .q{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .quote-bar button{border:0;background:transparent;color:var(--muted);font-size:14px;padding:2px 4px;}
 .composer{
-  flex:0 0 auto; border-top:1px solid var(--rule); padding:10px 12px calc(12px);
+  position:relative; flex:0 0 auto; border-top:1px solid var(--rule); padding:10px 12px calc(12px);
   background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(14px);
   display:flex; align-items:flex-end; gap:8px;
 }
@@ -268,6 +268,15 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
   outline:none; transition:border-color .2s ease;
 }
 .composer textarea:focus{border-color:var(--rule2);}
+/* tag 输入联想面板（NovelAI 式，锚在输入框上方） */
+#tagSug{position:absolute;left:10px;right:10px;bottom:100%;margin-bottom:8px;background:var(--elev);border:1px solid var(--rule2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:30;}
+#tagSug.show{display:block;}
+#tagSug .tg-quick{display:flex;gap:6px;overflow-x:auto;padding-bottom:7px;border-bottom:1px solid var(--rule);margin-bottom:6px;}
+#tagSug .tg-quick button{flex:0 0 auto;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--rule2);background:transparent;color:var(--muted);}
+#tagSug .tg-list button{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:8px;border-radius:10px;font-size:13px;}
+#tagSug .tg-list button:active{background:var(--hover);}
+#tagSug .tg-tag{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
+#tagSug .tg-cn{font-size:10.5px;color:var(--muted);flex:0 0 auto;}
 .cbtn{
   width:42px;height:42px; border-radius:14px; border:1px solid var(--rule); background:var(--surface);
   color:var(--ink); display:flex;align-items:center;justify-content:center; flex:0 0 auto; transition:all .18s ease;
@@ -470,6 +479,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button class="cbtn send" id="btnSend" title="发送">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6.5 11.5L12 5.6l5.5 5.9"/></svg>
       </button>
+      <div id="tagSug"><div class="tg-quick" id="tgQuick"></div><div class="tg-list" id="tgList"></div></div>
     </div>
     <input type="file" id="fileRef" accept="image/*" multiple hidden>
   </section>
@@ -756,7 +766,7 @@ const S={
   labSessions:store.get('xy_labsessions',[]), // 归档的实验会话
   libimg:store.get('xy_libimg',{}), // 画师串词库的真实小样图：key=词条串内容，图片本体在 IndexedDB
   sampSubj:store.get('xy_sampsubj','girl'), // 小样统一测试主题：girl/boy
-  qtags:store.get('xy_qtags',false),
+  qtag:store.get('xy_qtag',store.get('xy_qtags',false)?'heavy':'off'), // 画质标签档位：off/light/heavy/human（兼容旧开关数据）
   quote:null, refs:[], editingPreset:null, busy:false, viewerMsg:null, viewerSrc:null,
 };
 let editModels=[]; // 当前表单可选择的模型列表（未保存也能用）
@@ -1028,6 +1038,7 @@ function msgEl(m){
     if(!imgs.length)inner+=`<div style="font-size:12.5px;color:var(--muted);padding:6px 0">[图片已清理：本机存储空间不足]</div>`;
     if(m.text)inner+=`<div>${esc(m.text)}</div>`;
     if(m.en)inner+=`<div class="en-line">EN · ${esc(m.en)}</div>`;
+    if(m.prompt)inner+=`<div class="img-acts"><button data-a="same">同款 · 再来几张</button><button data-a="vary">以这张出变体</button></div>`;
     if(m.prompt||m.en)inner+=`<div class="pp-chip" data-pp="1">查看 / 复制提示词</div>`;
   }else{
     inner+=`<div>${esc(m.text)}</div>`;
@@ -1041,6 +1052,8 @@ function msgEl(m){
   img.forEach(im=>im.onclick=e=>{e.stopPropagation();openViewer(m,im.src);});
   const pp=div.querySelector('.pp-chip');
   if(pp)pp.onclick=e=>{e.stopPropagation();showPromptOv(m);};
+  const actSame=div.querySelector('[data-a=same]');if(actSame)actSame.onclick=e=>{e.stopPropagation();replayMsg(m,false);};
+  const actVary=div.querySelector('[data-a=vary]');if(actVary)actVary.onclick=e=>{e.stopPropagation();replayMsg(m,true);};
   bindPress(div,()=>sheetFor(m));
   return div;
 }
@@ -1139,7 +1152,8 @@ const MENU_ICONS={
   copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/></svg>',
   undo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5L3.8 9.2 8 13.4"/><path d="M4 9.2h10a6 6 0 0 1 0 12h-4"/></svg>',
   redo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5l4.2 4.2L16 13.4"/><path d="M20 9.2H10a6 6 0 0 0 0 12h4"/></svg>',
-  brush:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18a2 2 0 0 0 1.8 3h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7.5 14h9"/></svg>'
+  brush:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18a2 2 0 0 0 1.8 3h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7.5 14h9"/></svg>',
+  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>'
 };
 function openSheet(title,items){
   $('#sheetTitle').textContent=title;
@@ -1238,6 +1252,63 @@ $('#vStyle').onclick=()=>{
 
 /* ================= composer ================= */
 const input=$('#input');
+/* ================= tag 输入联想（NovelAI 式：打字弹 danbooru 建议，artist: 直接联想词库） ================= */
+const TAG_LIB=[
+ {tag:'1girl',cn:'一个女孩'},{tag:'2girls',cn:'两个女孩'},{tag:'3girls',cn:'三个女孩'},{tag:'1boy',cn:'一个男孩'},{tag:'2boys',cn:'两个男孩'},{tag:'1girl, 1boy',cn:'男女各一'},{tag:'solo',cn:'单人'},{tag:'multiple girls',cn:'多女'},
+ {tag:'close-up',cn:'面部特写'},{tag:'face focus',cn:'脸部聚焦'},{tag:'portrait',cn:'半身像'},{tag:'upper body',cn:'上半身'},{tag:'full body',cn:'全身'},{tag:'cowboy shot',cn:'膝盖景'},{tag:'wide shot',cn:'远景'},{tag:'pov',cn:'第一人称视角'},
+ {tag:'from above',cn:'俯视'},{tag:'from below',cn:'仰视'},{tag:'from side',cn:'侧面'},{tag:'from behind',cn:'背后'},{tag:'dutch angle',cn:'倾斜构图'},{tag:'dynamic pose',cn:'动感姿势'},{tag:'sitting',cn:'坐着'},{tag:'standing',cn:'站着'},{tag:'lying',cn:'躺着'},{tag:'walking',cn:'走路'},{tag:'running',cn:'奔跑'},{tag:'jumping',cn:'跳跃'},{tag:'looking at viewer',cn:'看向镜头'},{tag:'looking back',cn:'回头看'},
+ {tag:'depth of field',cn:'浅景深'},{tag:'motion blur',cn:'动态模糊'},{tag:'bokeh',cn:'焦外光斑'},{tag:'fish-eye lens',cn:'鱼眼镜头'},{tag:'foreshortening',cn:'透视缩短'},
+ {tag:'soft lighting',cn:'柔光'},{tag:'cinematic lighting',cn:'电影光'},{tag:'dramatic lighting',cn:'戏剧光'},{tag:'backlighting',cn:'逆光'},{tag:'rim lighting',cn:'轮廓光'},{tag:'golden hour',cn:'黄金时刻'},{tag:'blue hour',cn:'蓝调时刻'},{tag:'night',cn:'夜晚'},{tag:'sunset',cn:'日落'},{tag:'sunlight',cn:'阳光'},{tag:'moonlight',cn:'月光'},{tag:'neon lights',cn:'霓虹灯'},{tag:'candlelight',cn:'烛光'},{tag:'god rays',cn:'丁达尔光'},{tag:'dappled sunlight',cn:'树影斑驳'},{tag:'glowing',cn:'发光'},
+ {tag:'smile',cn:'微笑'},{tag:'grin',cn:'咧嘴笑'},{tag:'open mouth',cn:'张嘴'},{tag:'closed eyes',cn:'闭眼'},{tag:'blue eyes',cn:'蓝眼'},{tag:'golden eyes',cn:'金瞳'},{tag:'red eyes',cn:'红瞳'},{tag:'heterochromia',cn:'异色瞳'},{tag:'tears',cn:'眼泪'},{tag:'blush',cn:'脸红'},{tag:'surprised',cn:'惊讶'},{tag:'expressionless',cn:'无表情'},{tag:'pout',cn:'嘟嘴'},{tag:'laughing',cn:'大笑'},
+ {tag:'long hair',cn:'长发'},{tag:'short hair',cn:'短发'},{tag:'twintails',cn:'双马尾'},{tag:'ponytail',cn:'马尾'},{tag:'braid',cn:'辫子'},{tag:'white hair',cn:'白发'},{tag:'black hair',cn:'黑发'},{tag:'silver hair',cn:'银发'},{tag:'blonde hair',cn:'金发'},{tag:'pink hair',cn:'粉发'},{tag:'blue hair',cn:'蓝发'},{tag:'ahoge',cn:'呆毛'},{tag:'hair ornament',cn:'发饰'},{tag:'flower in hair',cn:'发间花'},
+ {tag:'school uniform',cn:'校服'},{tag:'serafuku',cn:'水手服'},{tag:'jk uniform',cn:'JK 制服'},{tag:'kimono',cn:'和服'},{tag:'yukata',cn:'浴衣'},{tag:'china dress',cn:'旗袍'},{tag:'hanfu',cn:'汉服'},{tag:'maid',cn:'女仆'},{tag:'business suit',cn:'西装'},{tag:'hoodie',cn:'连帽衫'},{tag:'sweater',cn:'毛衣'},{tag:'dress',cn:'连衣裙'},{tag:'gloves',cn:'手套'},{tag:'thighhighs',cn:'过膝袜'},{tag:'goggles',cn:'护目镜'},{tag:'headphones',cn:'耳机'},{tag:'glasses',cn:'眼镜'},{tag:'armor',cn:'铠甲'},{tag:'cape',cn:'披风'},{tag:'witch hat',cn:'魔女帽'},
+ {tag:'cherry blossoms',cn:'樱花'},{tag:'rain',cn:'雨'},{tag:'snow',cn:'雪'},{tag:'wind',cn:'风'},{tag:'petals',cn:'花瓣'},{tag:'stars',cn:'星空'},{tag:'cloudy sky',cn:'多云天空'},{tag:'ocean',cn:'大海'},{tag:'forest',cn:'森林'},{tag:'city lights',cn:'城市灯火'},{tag:'reflection',cn:'倒影'},{tag:'water drops',cn:'水珠'},{tag:'smoke',cn:'烟雾'},{tag:'fire',cn:'火焰'},{tag:'flower field',cn:'花田'},
+ {tag:'masterpiece',cn:'杰作级'},{tag:'best quality',cn:'最佳质量'},{tag:'amazing quality',cn:'惊人质量'},{tag:'very aesthetic',cn:'高审美'},{tag:'absurdres',cn:'超高清'},{tag:'extremely detailed',cn:'极细节'},{tag:'intricate details',cn:'精细细节'},{tag:'8k',cn:'8k'},{tag:'illustration',cn:'插画'},{tag:'concept art',cn:'概念图'},{tag:'watercolor (medium)',cn:'水彩介质'},{tag:'oil painting (medium)',cn:'油画介质'},{tag:'sketch',cn:'素描'},{tag:'flat color',cn:'平涂'},{tag:'thick paint',cn:'厚涂'},{tag:'impasto',cn:'颜料堆叠'},{tag:'film grain',cn:'胶片颗粒'},{tag:'vintage',cn:'复古'},{tag:'1990s (style)',cn:'90年代风'},{tag:'anime screencap',cn:'动画截帧'},{tag:'manga panel',cn:'漫画分镜'},{tag:'cel shading',cn:'赛璐璐上色'},
+ {tag:'wind lift',cn:'风掀起'},{tag:'hand on own face',cn:'手抚脸'},{tag:'hand up',cn:'抬手'},{tag:'arms up',cn:'双手上举'},{tag:'hands in pockets',cn:'手插兜'},{tag:'covering mouth',cn:'掩口'},{tag:'head tilt',cn:'歪头'},{tag:'hair blowing',cn:'发丝飘动'},{tag:'skirt lift',cn:'裙摆扬起'},{tag:'v arms',cn:'剪刀手'}
+];
+const TAG_QUICK=['1girl','2girls','1boy','1girl, 1boy','solo','looking at viewer'];
+function tgToken(){
+  const pos=input.selectionStart==null?input.value.length:input.selectionStart;
+  const m=input.value.slice(0,pos).match(/[^,]*$/);
+  return {tok:m[0],start:pos-m[0].length,end:pos};
+}
+function tgHide(){const b=$('#tagSug');if(b)b.classList.remove('show');}
+function tgRender(){
+  const box=$('#tagSug');if(!box)return;
+  const {tok}=tgToken();
+  const t=tok.trim().toLowerCase();
+  let list=[];
+  const am=t.match(/^artist[:：]\s*(.*)$/);
+  if(am){ // artist: 前缀直接联想画师串词库
+    const q=am[1];
+    list=ARTIST_LIB.filter(x=>(x.c==='artist'||x.c==='male'||x.c==='unisex')&&(!q||x.n.toLowerCase().includes(q))).slice(0,6).map(x=>({tag:'artist:'+x.n,cn:x.d}));
+  }else if(t){
+    list=TAG_LIB.filter(x=>x.tag!==t&&x.tag.includes(t)).slice(0,6);
+  }
+  if(!list.length){tgHide();return;}
+  const qd=$('#tgQuick');
+  if(!qd.children.length)TAG_QUICK.forEach(q=>{const b=document.createElement('button');b.type='button';b.textContent=q;b.onpointerdown=e=>{e.preventDefault();tgInsert(q);};qd.appendChild(b);});
+  const lb=$('#tgList');lb.innerHTML='';
+  list.forEach(x=>{
+    const b=document.createElement('button');b.type='button';
+    b.innerHTML='<span class="tg-tag">'+esc(x.tag)+'</span>'+(x.cn?'<span class="tg-cn">'+esc(x.cn)+'</span>':'');
+    b.onpointerdown=e=>{e.preventDefault();tgInsert(x.tag);};
+    lb.appendChild(b);
+  });
+  box.classList.add('show');
+}
+function tgInsert(word){ // 把光标处当前词替换成补全结果，光标落到末尾
+  const {start,end}=tgToken();
+  const rest=input.value.slice(end);
+  const need=rest&&!/^\s*,/.test(rest)?', ':'';
+  input.value=input.value.slice(0,start)+word+need+rest;
+  const pos=start+word.length+need.length;
+  input.focus();input.setSelectionRange(pos,pos);
+  tgHide();
+}
+input.addEventListener('input',tgRender);
+input.addEventListener('focus',()=>{if(input.value.trim())tgRender();});
+input.addEventListener('blur',()=>setTimeout(tgHide,160));
 function autoGrow(){input.style.height='auto';input.style.height=Math.max(64,Math.min(input.scrollHeight,130))+'px';}
 input.addEventListener('input',autoGrow);
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}});
@@ -1292,9 +1363,12 @@ function openParams(){
     <label style="margin:0;flex:1">风格参数码模式<br><span style="font-size:11px;color:var(--faint)">把画风固化为一段参数随提示词传输（类似 MJ 的 --p），不带参考图的模型也能锁风格。在画风卡片里设置参数码。</span></label>
     <input type="checkbox" id="codeToggle" ${S.codeMode?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
   </div>
-  <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
-    <label style="margin:0;flex:1">NovelAI 画质标签<br><span style="font-size:11px;color:var(--faint)">自动在提示词前加 best quality / very aesthetic 等，二次元模型建议开</span></label>
-    <input type="checkbox" id="qtToggle" ${S.qtags?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
+  <div class="field" style="margin-top:4px">
+    <label>NovelAI 画质标签</label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="qtSeg">
+      ${[['off','关'],['light','轻'],['heavy','重'],['human','人物特写']].map(([k,l])=>`<button data-qt="${k}" type="button" style="border:1px solid ${S.qtag===k?'transparent':'var(--rule2)'};background:${S.qtag===k?'var(--accent)':'var(--elev)'};color:${S.qtag===k?'var(--accent-ink)':'var(--ink)'};border-radius:999px;padding:6px 14px;font-size:12px">${l}</button>`).join('')}
+    </div>
+    <div style="font-size:11.5px;color:var(--muted)">轻=只加基础质量词省额度；重=全量画质词（推荐）；人物特写=人像构图加成。无限制模式下不追加。</div>
   </div>
   <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <label style="margin:0;flex:1">提示词自动翻译成英文<br><span style="font-size:11px;color:var(--faint)">绘画模型不支持中文时建议开启，发图前自动先翻译</span></label>
@@ -1368,7 +1442,11 @@ function openParams(){
   };
   renderArtQuick();
   wrap.querySelector('#rawToggle').onchange=e=>{S.raw=e.target.checked;store.set('xy_raw',S.raw);toast(S.raw?'无限制开启：提示词原样直传':'无限制关闭：恢复兜底词与画风修饰');};
-  wrap.querySelector('#qtToggle').onchange=e=>{S.qtags=e.target.checked;store.set('xy_qtags',S.qtags);toast(S.qtags?'已开启画质标签':'已关闭画质标签');};
+  wrap.querySelectorAll('#qtSeg [data-qt]').forEach(b=>b.onclick=()=>{
+    S.qtag=b.dataset.qt;store.set('xy_qtag',S.qtag);
+    wrap.querySelectorAll('#qtSeg [data-qt]').forEach(x=>{const on=x.dataset.qt===S.qtag;x.style.background=on?'var(--accent)':'var(--elev)';x.style.color=on?'var(--accent-ink)':'var(--ink)';x.style.borderColor=on?'transparent':'var(--rule2)';});
+    toast('画质标签：'+({off:'关',light:'轻（基础质量词）',heavy:'重（全量画质词）',human:'人物特写'})[S.qtag]);
+  });
   wrap.querySelector('#codeToggle').onchange=e=>{S.codeMode=e.target.checked;store.set('xy_code_mode',S.codeMode);toast(S.codeMode?'已开启参数码模式':'已关闭参数码模式');};
   wrap.querySelector('#trToggle').onchange=e=>{S.translate=e.target.checked;store.set('xy_translate',S.translate);toast(S.translate?'已开启自动翻译':'已关闭自动翻译');};
 }
@@ -2222,6 +2300,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
     {icon:'undo',txt:'生成参数（尺寸/张数/强度/Seed/负面词）',fn:openParams},
     {icon:'redo',txt:'批量抽卡（变量轮换出整套）',fn:openBatch},
+    {icon:'dice',txt:'随机灵感（摇一下直接画）',fn:rollDice},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
   ]);
 };
@@ -2263,6 +2342,21 @@ function openBatch(){
       toast('批量抽卡完成：成功 '+ok+'/'+lines.length+' 张');
     }
   };
+}
+
+/* ================= 随机灵感骰子（摇一下直接画） ================= */
+const DICE_SUBJ=[
+ '月光下的海边栈道，白衣少女回头，裙摆扬起','雨夜便利店门口，撑伞少年，霓虹倒影','樱花车站的长椅，校服女生，风起花瓣','夏日祭典穿浴衣的少女，捞金鱼，灯笼光','天台栏杆边的少年，黄昏云海，风吹校服','旧书店窗边的女孩，阳光尘埃，热可可','雪地里的红围巾少女，呵气成霜，路灯','和风庭院的巫女，扫落叶，午后光','咖啡馆靠窗位置，乳白毛衣女生，拉花咖啡','赛博朋克小巷，机械义肢少女，全息广告',
+ '星际舰桥上的女舰长，制服，舷窗外星云','中世纪酒馆里的女骑士，卸下头盔，火光','竹林间的剑客，白衣，剑光如水','蒸汽朋克工坊的发明家少女，护目镜，齿轮','深夜便利店的猫耳店员，收银台，关东煮','雨后天桥上的高中生，书包，水洼倒影','花田里的白裙女孩，风起，花瓣纷飞','神社石阶上的狐狸面具少女，红灯笼','午夜天台的双子少女，城市灯火','旧车厢靠窗的旅人，行李箱，暮色',
+ '泳池边晒太阳的少女，墨镜，冰汽水','图书馆打瞌睡的眼镜女生，书页，午后','K歌包厢里的双马尾少女，荧光棒','情人节街角的女孩，巧克力纸袋，期待','万圣节南瓜灯前的魔女，尖帽，糖果','新年和服姐妹，神社参拜，梅花','海边追逐浪花的少女，夏天，水花','厨房做蛋糕的围裙女孩，面粉，奶油','电车内打盹的学生，夕阳，摇晃','银河列车上的兜帽旅人，星窗，茶'
+];
+function rollDice(){
+  if(S.busy)return toast('正在生成中，稍等');
+  const subj=pick(DICE_SUBJ);
+  const combos=ARTIST_LIB.filter(x=>x.c==='combo');
+  const combo=combos.length?pick(combos):null;
+  toast('摇到了：'+subj.slice(0,16)+'…'+(combo?'（'+combo.n+'）':''));
+  runGeneration({userText:subj+(combo?'，'+combo.n:''),extraPrompt:combo?combo.s:''});
 }
 
 /* ================= 润色提示词（助手） ================= */
@@ -2343,12 +2437,19 @@ async function handleSend(){
   await runGeneration({userText:text});
 }
 
-async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOverride=''}){
+async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOverride='',replay=null}={}){
   const p=activePreset();
   if(!p||!p.baseUrl||!p.model){
     pushMsg({id:uid(),role:'ai',kind:'error',text:'还没配好 API。去「配置」页填好中转站地址、密钥，拉取并选择绘画模型再试。',ts:Date.now()});
     switchTab('config');return;
   }
+  let prompt,refs,n,useNeg,useSize,useSeed;
+  if(replay){ // 同款/变体：快照原样重发，不走拼装与重翻（快照已含画风句与画师串，复现最忠实）
+    prompt=replay.prompt;
+    refs=replay.img?[replay.img]:[];
+    n=Math.max(1,Math.min(4,replay.count|0||2));
+    useNeg=replay.neg||'';useSize=replay.size||S.size;useSeed=(replay.seed==null?'':String(replay.seed));
+  }else{
   const st=activeStyle(),cs=selChars();
   const parts=[];
   if(userText)parts.push(userText);
@@ -2368,18 +2469,22 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     if(w>1){const k=Math.min(4,Math.round((w-1)/0.25));return '{'.repeat(k)+a.str+'}'.repeat(k);}
     return '['+a.str+']';
   }).join(', '));
-  let prompt=parts.filter(Boolean).join('\n');
-  if(S.qtags&&!S.raw)prompt='best quality, amazing quality, very aesthetic, absurdres, '+prompt; // 无限制模式不追加兜底词
-  const refs=[...styleImgs(st),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)];
-  const n=Math.max(1,Math.min(4,S.count|0));
+  prompt=parts.filter(Boolean).join('\n');
+  const QT_LV={light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
+  if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
+  refs=[...styleImgs(st),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)];
+  n=Math.max(1,Math.min(4,S.count|0));
+  useNeg=S.neg;useSize=S.size;useSeed=S.seed;
+  }
 
   const prog={id:uid(),role:'ai',kind:'progress',text:pick(ACKS),pct:4,stage:'已读 · 理解需求',ts:Date.now()};
-  pushMsg(prog);S.busy=true;$('#btnSend').disabled=true;
+  tgHide();pushMsg(prog);S.busy=true;$('#btnSend').disabled=true;
   setPresence('正在画…',true);markLastRead();
   // 提示词翻译（绘画模型不支持中文时，先翻成英文再发；「用英文画」会直接传入英文，跳过这步）
-  const needTr=!enOverride&&S.translate&&CJK_RE.test(prompt);
+  const needTr=!enOverride&&!replay&&S.translate&&CJK_RE.test(prompt);
   updateProgress(prog,6,needTr?'翻译提示词…':'提交请求');
   let promptEn=enOverride||prompt;
+  if(replay&&!enOverride)promptEn=replay.en||prompt; // 快照自带已翻译结果，不再重翻
   if(needTr){
     promptEn=await translatePrompt(p,prompt);
     if(promptEn===prompt)toast('翻译服务不可用，已按原文发送');
@@ -2392,7 +2497,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     updateProgress(prog,next,next<25?'提交请求':next<65?(n>1?'生成 '+n+' 张 · 进行中':'模型生成中'):'接收图片');
   },420);
   try{
-    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:S.size,neg:S.neg,seed:S.seed})));
+    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:useSize,neg:useNeg,seed:useSeed})));
     const imgs=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
     if(!imgs.length){const e=results.find(r=>r.status==='rejected');throw (e&&e.reason)||new Error('生成失败');}
     if(imgs.length<n)toast('有 '+(n-imgs.length)+' 张没出来，其余已收到');
@@ -2400,7 +2505,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     await new Promise(r=>setTimeout(r,wait));
     updateProgress(prog,100,'完成');
     const idx=S.msgs.indexOf(prog);
-    S.msgs[idx]={id:prog.id,role:'ai',kind:'image',img:imgs[0],imgs:imgs.length>1?imgs:undefined,prompt,en:promptEn!==prompt?promptEn:undefined,text:imgs.length>1?imgs.length+' 张出来了，点开挑一张吧':pick(DONE_LINES),refs:refs.length,ts:prog.ts};
+    S.msgs[idx]={id:prog.id,role:'ai',kind:'image',img:imgs[0],imgs:imgs.length>1?imgs:undefined,prompt,en:promptEn!==prompt?promptEn:undefined,text:imgs.length>1?imgs.length+' 张出来了，点开挑一张吧':pick(DONE_LINES),refs:refs.length,snap:{prompt,en:promptEn,neg:useNeg,size:useSize,seed:useSeed,count:n},ts:prog.ts};
     persistMsgs();
   }catch(err){
     clearInterval(timer);
@@ -2425,11 +2530,24 @@ async function doModify(text,lastImg){
 }
 async function regen(m){
   if(S.busy){toast('正在生成中，稍等');return;}
-  if(m.role==='ai'&&m.kind==='image'){
-    await runGeneration({userText:'',extraPrompt:m.prompt,refImgs:[]}); // 同提示词重新出图
-  }else{
-    await runGeneration({userText:m.text||''});
+  if(m.role==='ai'&&m.kind==='image'&&(m.prompt||m.en)){
+    return replayMsg(m,false); // 有提示词就走快照忠实复现，避免重复拼装画风句
   }
+  await runGeneration({userText:m.text||''});
+}
+async function replayMsg(m,vary){ // 同款重roll（快照原样重发）/ 单张变体（该图作参考重画）
+  if(S.busy){toast('正在生成中，稍等');return;}
+  const base=m.prompt||m.en;
+  if(!base)return toast('这条没有可复现的提示词');
+  let img=null;
+  if(vary){
+    const src=(m.imgs&&m.imgs[0])||m.img;
+    if(!src)return toast('这张图没有原图数据');
+    img=await toDataURL(src);
+    if(!img||!img.startsWith('data:'))return toast('图片数据没取到，换一张试试');
+  }
+  const snap=m.snap||{prompt:base,en:(m.en&&m.en!==base)?m.en:'',neg:S.neg,size:S.size,seed:S.seed,count:2};
+  await runGeneration({replay:{...snap,img}});
 }
 
 /* ================= styles & chars ================= */
