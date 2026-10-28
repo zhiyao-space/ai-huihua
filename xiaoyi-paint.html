@@ -746,6 +746,7 @@ const S={
     {id:uid(),name:'厚涂油画感',str:'thick paint, impasto, oil painting texture',on:false},
     {id:uid(),name:'赛博霓虹',str:'neon lighting, cyberpunk style, blade runner atmosphere',on:false},
     {id:uid(),name:'清新水彩',str:'watercolor, soft edges, pastel colors',on:false}],
+  artistsW:store.get('xy_artists_w',{}), // 画师权重表：key=画师串id，值 0.2~1.5（1 默认不加权）
   neg:store.get('xy_neg',''),
   seed:store.get('xy_seed',''), // 空=随机；填固定值=同提示词稳定重roll
   codeWeight:store.get('xy_codeweight',1.2), // 参数码强度
@@ -1278,6 +1279,11 @@ function openParams(){
     <input type="range" id="cwRange" min="0.5" max="2" step="0.1" value="${S.codeWeight}" style="width:100%">
     <div style="font-size:11.5px;color:var(--muted)">专属画风太淡往右调，太浓压过画面往左调。需在「画风」页卡片里设参数码并开启参数码模式。</div>
   </div>
+  <div class="field" style="margin-top:4px">
+    <label>画师串快捷开关 <span id="artQCount" style="color:var(--ink);font-weight:600"></span></label>
+    <div id="artQuick" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div style="font-size:11.5px;color:var(--muted)">每条画师可单独调强弱：往右更浓（{加权}），往左更淡（[减权]）。完整管理和词库在「画风」页。</div>
+  </div>
   <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <label style="margin:0;flex:1">无限制模式<br><span style="font-size:11px;color:var(--faint)">不追加质量兜底词与画风修饰句，提示词原样直传模型</span></label>
     <input type="checkbox" id="rawToggle" ${S.raw?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
@@ -1331,6 +1337,36 @@ function openParams(){
   wrap.querySelector('#seedRand').onclick=()=>{seedInp.value='';S.seed='';store.set('xy_seed',S.seed);toast('已切回随机种子');};
   const cwr=wrap.querySelector('#cwRange');
   cwr.oninput=()=>{S.codeWeight=+cwr.value;store.set('xy_codeweight',S.codeWeight);wrap.querySelector('#cwVal').textContent=S.codeWeight.toFixed(2);};
+  const artQuick=wrap.querySelector('#artQuick');
+  const renderArtQuick=()=>{ // 画师串快捷开关：勾选启停 + 权重滑条（与「画风」页画师串数据互通）
+    artQuick.innerHTML='';
+    const arts=S.artists;
+    wrap.querySelector('#artQCount').textContent='('+arts.filter(a=>a.on).length+'/'+arts.length+')';
+    if(!arts.length){artQuick.innerHTML='<div style="font-size:12px;color:var(--faint)">还没有画师串，去「画风」页从词库点词条添加</div>';return;}
+    arts.forEach(a=>{
+      const w=(S.artistsW[a.id]??1);
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;border:1px solid '+(a.on?'var(--rule2)':'var(--rule)')+';border-radius:12px;padding:7px 10px;'+(a.on?'':'opacity:.55');
+      row.innerHTML='<input type="checkbox" '+(a.on?'checked':'')+' style="width:17px;height:17px;accent-color:var(--accent);flex:0 0 auto">'
+        +'<span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.name||a.str)+'</span>'
+        +'<input type="range" min="0.2" max="1.5" step="0.05" value="'+w+'" title="画师权重" style="width:88px;flex:0 0 auto">'
+        +'<span class="wv" style="font-size:11px;color:var(--muted);width:32px;text-align:right;flex:0 0 auto">'+w.toFixed(2)+'</span>';
+      row.querySelector('input[type=checkbox]').onchange=e=>{
+        a.on=e.target.checked;
+        row.style.opacity=a.on?'1':'.55';
+        row.style.borderColor=a.on?'var(--rule2)':'var(--rule)';
+        persist('xy_artists',S.artists,false);renderArtists();
+      };
+      const rg=row.querySelector('input[type=range]');
+      rg.oninput=()=>{
+        S.artistsW[a.id]=+rg.value;store.set('xy_artists_w',S.artistsW);
+        row.querySelector('.wv').textContent=(+rg.value).toFixed(2);
+        if(!a.on){a.on=true;row.querySelector('input[type=checkbox]').checked=true;row.style.opacity='1';row.style.borderColor='var(--rule2)';persist('xy_artists',S.artists,false);renderArtists();}
+      };
+      artQuick.appendChild(row);
+    });
+  };
+  renderArtQuick();
   wrap.querySelector('#rawToggle').onchange=e=>{S.raw=e.target.checked;store.set('xy_raw',S.raw);toast(S.raw?'无限制开启：提示词原样直传':'无限制关闭：恢复兜底词与画风修饰');};
   wrap.querySelector('#qtToggle').onchange=e=>{S.qtags=e.target.checked;store.set('xy_qtags',S.qtags);toast(S.qtags?'已开启画质标签':'已关闭画质标签');};
   wrap.querySelector('#codeToggle').onchange=e=>{S.codeMode=e.target.checked;store.set('xy_code_mode',S.codeMode);toast(S.codeMode?'已开启参数码模式':'已关闭参数码模式');};
@@ -1491,6 +1527,44 @@ const ARTIST_LIB=[
   {c:'male',n:'ogawa chise',s:'artist:ogawa chise',d:'BL 张力，情绪氛围浓'},
   {c:'male',n:'kojima lalako',s:'artist:kojima lalako',d:'BL 柔美，梦幻笔触'},
   {c:'male',n:'ekita kuan',s:'artist:ekita kuan',d:'中国画师，清俊美男'},
+  /* ---- 男生画师增补：社区/TagLab 高人气男性向 ---- */
+  {c:'male',n:'phecda',s:'artist:phecda',d:'美型男女皆精，清透光感人气极高'},
+  {c:'male',n:'cait',s:'artist:cait',d:'清俊少年感，色彩干净氛围好'},
+  {c:'male',n:'guweiz',s:'artist:guweiz',d:'半写实厚涂，暗调电影感硬汉'},
+  {c:'male',n:'yamada akihiro',s:'artist:yamada akihiro',d:'Fate 官方插画，俊美战士'},
+  {c:'male',n:'hanekoto',s:'artist:hanekoto',d:'通透光感，青春美型男女'},
+  {c:'male',n:'neco',s:'artist:neco',d:'粗线条个性派，潮酷街头感'},
+  {c:'male',n:'sakimichan',s:'artist:sakimichan',d:'欧美厚涂，健硕肌肉猛男'},
+  {c:'male',n:'redjuice',s:'artist:redjuice',d:'超时空要塞设计风，冷峻未来男'},
+  {c:'male',n:'mignon',s:'artist:mignon',d:'法式浪漫，王子偶像气质'},
+  {c:'male',n:'40hara',s:'artist:40hara',d:'利落现代风，都市酷男'},
+  {c:'male',n:'rella',s:'artist:rella',d:'高饱和时尚，男偶像杂志感'},
+  {c:'male',n:'ask (zy933)',s:'artist:ask (zy933)',d:'清冷禁欲系，冰山美男'},
+  {c:'male',n:'quasarcake',s:'artist:quasarcake',d:'柔光厚涂，温柔帅气学长'},
+  {c:'male',n:'rosuuri',s:'artist:rosuuri',d:'精致清新，俊秀少年'},
+  {c:'male',n:'torino aqua',s:'artist:torino aqua',d:'清透水感，柔和美男'},
+  {c:'male',n:'rossdraws',s:'artist:rossdraws',d:'绚丽笔刷光效，幻想剑士'},
+  {c:'male',n:'mika pikazo',s:'artist:mika pikazo',d:'撞色潮流，热血少年活力'},
+  {c:'male',n:'hitomio16',s:'artist:hitomio16',d:'细腻光影，成熟系男性'},
+  {c:'male',n:'shirabii',s:'artist:shirabii',d:'光滑质感，美型偶像脸'},
+  {c:'male',n:'gozz',s:'artist:gozz',d:'西幻厚涂，佣兵骑士质感'},
+  /* ---- 男女通用画师：男角色女角色都出彩 ---- */
+  {c:'unisex',n:'wlop',s:'artist:wlop',d:'厚涂写实天花板，男女角色统一质感'},
+  {c:'unisex',n:'ciloranko',s:'artist:ciloranko',d:'清透日系，男女都精致'},
+  {c:'unisex',n:'miv4t',s:'artist:miv4t',d:'高级灰暗调，氛围感男女皆宜'},
+  {c:'unisex',n:'kidmo',s:'artist:kidmo',d:'细腻情绪感，少年少女通吃'},
+  {c:'unisex',n:'rsqq',s:'artist:rsqq',d:'梦境光效，柔和梦幻通用'},
+  {c:'unisex',n:'as109',s:'artist:as109',d:'漫截质感，人物氛围强'},
+  {c:'unisex',n:'hiten',s:'artist:hiten',d:'温柔水彩感，暖系通用'},
+  {c:'unisex',n:'nardack',s:'artist:nardack',d:'唯美梦幻光效，优雅通用'},
+  {c:'unisex',n:'ke-ta',s:'artist:ke-ta',d:'简约现代，时尚百搭'},
+  {c:'unisex',n:'kantoku',s:'artist:kantoku',d:'柔光日常，老牌全能'},
+  {c:'unisex',n:'haccan',s:'artist:haccan',d:'FGO 卡面级，贵气精致'},
+  {c:'unisex',n:'cocomi',s:'artist:cocomi',d:'细腻美型，男女皆佳'},
+  {c:'unisex',n:'shimadoriru',s:'artist:shimadoriru',d:'水润光泽皮肤，通透通用'},
+  {c:'unisex',n:'kedama milk',s:'artist:kedama milk',d:'色气水润，质感细腻'},
+  {c:'unisex',n:'iXima',s:'artist:iXima',d:'初音官方级，清透标准'},
+  {c:'unisex',n:'rurudo',s:'artist:rurudo',d:'透明感水彩，清新万能'},
   /* ---- 男生画师补充：漫画家/插画家级 ---- */
   {c:'male',n:'yoji shinkawa',s:'artist:yoji shinkawa',d:'新川洋司，水墨机甲硬核帅'},
   {c:'male',n:'tsunenori saito',s:'artist:tsunenori saito',d:'超精致美男，插画家级笔触'},
@@ -1570,7 +1644,7 @@ const ARTIST_LIB=[
   {c:'quality',n:'摄影棚',s:'studio photography, softbox lighting, 85mm lens'},
   {c:'quality',n:'胶片质感',s:'kodak portra 400, film grain, analog photo'},
 ];
-const LIB_CATS=[['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
+const LIB_CATS=[['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
 let libTab='combo',libQ='';
 const libHas=s=>S.artists.some(a=>a.str===s);
 function libAdd(it){
@@ -2288,7 +2362,12 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   }
   if(cs.length)parts.push('角色形象锁定：'+cs.map(c=>'「'+c.name+'」').join('、')+'严格参考所附角色形象图，保持长相、发型、服饰特征一致。');
   const artsOn=S.artists.filter(a=>a.on&&a.str);
-  if(artsOn.length)parts.push(artsOn.map(a=>a.str).join(', '));
+  if(artsOn.length)parts.push(artsOn.map(a=>{ // 画师权重：>1 用 {} 加权（每0.25一层，最多4层），<1 用 [] 减权
+    const w=S.artistsW[a.id]??1;
+    if(Math.abs(w-1)<0.05)return a.str;
+    if(w>1){const k=Math.min(4,Math.round((w-1)/0.25));return '{'.repeat(k)+a.str+'}'.repeat(k);}
+    return '['+a.str+']';
+  }).join(', '));
   let prompt=parts.filter(Boolean).join('\n');
   if(S.qtags&&!S.raw)prompt='best quality, amazing quality, very aesthetic, absurdres, '+prompt; // 无限制模式不追加兜底词
   const refs=[...styleImgs(st),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)];
