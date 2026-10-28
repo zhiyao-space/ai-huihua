@@ -347,7 +347,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .sheet{
   width:100%; background:var(--surface); border-radius:22px 22px 0 0; padding:10px 12px 16px;
   padding-bottom:calc(16px + env(safe-area-inset-bottom));
-  max-height:calc(100% - 18px); display:flex; flex-direction:column;
+  max-height:calc(100% - 18px); display:flex; flex-direction:column; position:relative;
   transform:translateY(40px); transition:transform .26s cubic-bezier(.32,.72,.25,1);
 }
 .sheet .grab,.sheet .s-title{flex:0 0 auto;}
@@ -363,9 +363,16 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .s-item svg{width:18px;height:18px; color:var(--muted); flex:0 0 auto;}
 .s-item.danger{color:var(--danger);}
 .s-item.danger svg{color:var(--danger);}
+.ov-x{
+  position:absolute; top:8px; right:10px; width:32px; height:32px; border:0; border-radius:11px;
+  background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center;
+  z-index:3; transition:background .15s ease;
+}
+.ov-x:active{background:var(--hover); color:var(--ink);}
+.ov-x svg{width:17px; height:17px;}
 .modal{
   width:min(320px,86%); background:var(--surface); border:1px solid var(--rule); border-radius:20px;
-  padding:20px; transform:scale(.94); transition:transform .22s ease;
+  padding:20px; transform:scale(.94); transition:transform .22s ease; position:relative;
 }
 .overlay.show .modal{transform:none;}
 .modal h4{margin:0 0 6px; font-size:15.5px;}
@@ -646,6 +653,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 
   <!-- overlays -->
   <div class="overlay center" id="recipeOv"><div class="modal" style="width:min(92%,440px);max-height:82%;overflow:auto;text-align:left">
+    <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <h3 style="font-size:15px;margin:0 0 4px">自定义画风配方器</h3>
     <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px">自由组合下面五个维度（可多选），拼出独一无二的画风串，存起来一键复用。</p>
     <div id="rBody"></div>
@@ -658,7 +666,8 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button class="mini" id="rToInput" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)">拼入输入框</button>
     </div>
   </div></div>
-  <div class="overlay" id="libOv"><div class="sheet" style="height:86%;display:flex;flex-direction:column;padding-bottom:0">
+  <div class="overlay" id="libOv"><div class="sheet" style="height:86%;display:flex;flex-direction:column;padding-bottom:0;position:relative">
+    <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div class="grab"></div>
     <div class="s-title">画师串词库 · 点词条自动存进画师串并启用</div>
     <div style="padding:0 16px 8px;flex:0 0 auto;font-size:11.5px;color:var(--muted);line-height:1.5">防崩小贴士：同时开 <b style="color:var(--ink)">2-3 条</b>就够，叠太多五官容易崩；优先用调好配比的组合串；写实系别和水动漫系混搭。</div>
@@ -675,6 +684,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
     <div id="libList" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
   </div></div>
   <div class="overlay" id="sheetOv"><div class="sheet">
+    <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div class="grab"></div><div class="s-title" id="sheetTitle"></div><div id="sheetItems"></div>
   </div></div>
   <div class="overlay center" id="modalOv"><div class="modal">
@@ -1169,9 +1179,13 @@ function openSheet(title,items){
     b.onclick=()=>{closeOverlays();setTimeout(it.fn,120);};
     box.appendChild(b);
   });
-  $('#sheetOv').classList.add('show');
+  ovOpen();$('#sheetOv').classList.add('show');
 }
-function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');}
+let ovHist=false;
+function ovOpen(){if(!ovHist){ovHist=true;try{history.pushState({xyov:1},'');}catch(e){}}}
+function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');if(ovHist){ovHist=false;try{history.back();}catch(e){}}}
+window.addEventListener('popstate',()=>{if(ovHist){ovHist=false;closeOverlays();}});
+$$('.ov-x').forEach(b=>b.onclick=()=>closeOverlays());
 $$('#sheetOv,#modalOv,#recipeOv,#pvOv').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeOverlays();}));
 $('#libOv').addEventListener('click',e=>{if(e.target===e.currentTarget)closeOverlays();});
 
@@ -1186,7 +1200,7 @@ function openTextOv(title,val,{editable=false,extra=[],onSave=null}={}){
   extra.forEach(a=>add(a.label,a.cls,a.fn));
   if(editable&&onSave)add('保存','pri',v=>{closeOverlays();onSave(v.trim());});
   add('关闭','',()=>closeOverlays());
-  $('#pvOv').classList.add('show');
+  ovOpen();$('#pvOv').classList.add('show');
 }
 function showPromptOv(m){
   const has=!!(m.prompt||(m.en&&m.en!==m.prompt));
@@ -1199,7 +1213,7 @@ function showPromptOv(m){
 }
 
 let modalCb=null;
-function askConfirm(title,text,cb){$('#mTitle').textContent=title;$('#mText').textContent=text;modalCb=cb;$('#modalOv').classList.add('show');}
+function askConfirm(title,text,cb){$('#mTitle').textContent=title;$('#mText').textContent=text;modalCb=cb;ovOpen();$('#modalOv').classList.add('show');}
 $('#mCancel').onclick=closeOverlays;
 $('#mOk').onclick=()=>{closeOverlays();modalCb&&modalCb();};
 
@@ -1212,7 +1226,7 @@ function openViewer(m,src){
   vp.classList.remove('open');
   vp.textContent=(m.prompt||m.text||'')+(m.en?'\nEN: '+m.en:'');
   vp.title='点一下展开/收起全文';
-  $('#viewer').classList.add('show');
+  ovOpen();$('#viewer').classList.add('show');
 }
 $('#vPrompt').onclick=()=>$('#vPrompt').classList.toggle('open');
 $('#vClose').onclick=closeOverlays;
@@ -1822,7 +1836,7 @@ $('#btnLib').onclick=()=>{
   $('#libSearch').value='';libQ='';libTab='combo';
   renderSampSubj();
   renderLibTabs();renderLibList();
-  $('#libOv').classList.add('show');
+  ovOpen();$('#libOv').classList.add('show');
 };
 $('#libSearch').oninput=e=>{libQ=e.target.value;renderLibTabs();renderLibList();};
 
@@ -2211,7 +2225,7 @@ $('#btnRecipe').onclick=()=>{
     body.appendChild(lab);body.appendChild(wrap);
   });
   rRefresh();
-  $('#recipeOv').classList.add('show');
+  ovOpen();$('#recipeOv').classList.add('show');
 };
 $('#rReset').onclick=()=>{rSel={};$('#rExtra').value='';rRefresh();};
 $('#rToInput').onclick=()=>{
