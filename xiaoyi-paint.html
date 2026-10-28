@@ -747,6 +747,9 @@ const S={
     {id:uid(),name:'赛博霓虹',str:'neon lighting, cyberpunk style, blade runner atmosphere',on:false},
     {id:uid(),name:'清新水彩',str:'watercolor, soft edges, pastel colors',on:false}],
   neg:store.get('xy_neg',''),
+  seed:store.get('xy_seed',''), // 空=随机；填固定值=同提示词稳定重roll
+  codeWeight:store.get('xy_codeweight',1.2), // 参数码强度
+  raw:store.get('xy_raw',false), // 无限制模式：不追加兜底词，提示词原样直传
   labMsgs:store.get('xy_labmsgs',[]), // 画风实验的配方记录（不含图片）
   sessions:store.get('xy_sessions',[]), // 归档的对话会话
   labSessions:store.get('xy_labsessions',[]), // 归档的实验会话
@@ -900,14 +903,17 @@ async function apiModels(p){
   const j=await r.json();
   return (j.data||[]).map(m=>m.id).filter(Boolean);
 }
-async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg=''}){
+async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg='',seed=''}){
   const root=apiRoot(p.baseUrl), model=p.model;
   if(!model)throw new Error('请先选择绘画模型');
+  const seedN=parseInt(seed,10); // 有效数字才传，空/-1=随机
+  const hasSeed=Number.isInteger(seedN)&&seedN>=0;
   let res;
   if(refDataUrls.length){
     const fd=new FormData();
     fd.append('model',model); fd.append('prompt',prompt); fd.append('n','1'); fd.append('size',size);
     if(neg)fd.append('negative_prompt',neg);
+    if(hasSeed)fd.append('seed',String(seedN));
     for(const u of refDataUrls){
       const blob=await (await fetch(u)).blob();
       fd.append(refDataUrls.length>1?'image[]':'image',blob,'ref'+uid()+'.png');
@@ -918,11 +924,11 @@ async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg=''}){
       // 参考图不被该模型/中转支持时，退回纯文字生成
       if(/^(4\d\d)/.test(String(res.status))){
         toast('参考图接口不被支持，已退回纯文字生成');
-        res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{})})});
+        res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{})})});
       }else throw new Error('HTTP '+res.status+' '+t.slice(0,160));
     }
   }else{
-    res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{})})});
+    res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{})})});
   }
   if(!res.ok){
     const t=await res.text().catch(()=>'');
@@ -1253,10 +1259,28 @@ function openParams(){
   <div class="field" style="margin-top:4px">
     <label>负面提示词</label>
     <textarea id="negText" rows="2" placeholder="不想出现的东西，如：lowres, bad anatomy, blurry。留空不发送；个别模型不支持该参数，报错就清空" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(S.neg)}</textarea>
-    <div style="display:flex;gap:6px;margin-top:6px">
-      <button id="negFix" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">一键防崩（五官修复）</button>
-      <button id="negClear" style="border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:999px;padding:5px 12px;font-size:11.5px">清空</button>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <button data-neg="fix" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">防崩</button>
+      <button data-neg="hands" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">手部修正</button>
+      <button data-neg="style" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">画风排除</button>
+      <button data-neg="clear" style="border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:999px;padding:5px 12px;font-size:11.5px">清空</button>
     </div>
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>Seed 种子</label>
+    <div style="display:flex;gap:8px">
+      <input id="seedText" value="${esc(S.seed)}" placeholder="-1 或留空 = 每次随机；填固定数字 + 同提示词 = 稳定重roll微调" style="flex:1;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);min-width:0">
+      <button id="seedRand" type="button" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:12px;padding:8px 14px;font-size:12.5px">随机</button>
+    </div>
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>风格参数码强度 <span id="cwVal" style="color:var(--ink);font-weight:600">${S.codeWeight.toFixed(2)}</span></label>
+    <input type="range" id="cwRange" min="0.5" max="2" step="0.1" value="${S.codeWeight}" style="width:100%">
+    <div style="font-size:11.5px;color:var(--muted)">专属画风太淡往右调，太浓压过画面往左调。需在「画风」页卡片里设参数码并开启参数码模式。</div>
+  </div>
+  <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <label style="margin:0;flex:1">无限制模式<br><span style="font-size:11px;color:var(--faint)">不追加质量兜底词与画风修饰句，提示词原样直传模型</span></label>
+    <input type="checkbox" id="rawToggle" ${S.raw?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
   </div>
   <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
     <label style="margin:0;flex:1">风格参数码模式<br><span style="font-size:11px;color:var(--faint)">把画风固化为一段参数随提示词传输（类似 MJ 的 --p），不带参考图的模型也能锁风格。在画风卡片里设置参数码。</span></label>
@@ -1270,7 +1294,18 @@ function openParams(){
     <label style="margin:0;flex:1">提示词自动翻译成英文<br><span style="font-size:11px;color:var(--faint)">绘画模型不支持中文时建议开启，发图前自动先翻译</span></label>
     <input type="checkbox" id="trToggle" ${S.translate?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
   </div>
-  <div style="font-size:11.5px;color:var(--muted)">比例接近 1:1 / 2:3 竖图 / 3:2 横图，实际支持取决于所选模型。</div>`;
+  <div style="font-size:11.5px;color:var(--muted)">比例接近 1:1 / 2:3 竖图 / 3:2 横图，实际支持取决于所选模型。</div>
+  <div class="field" style="margin-top:10px"><label>提示词书签（点一下插入输入框，点†删除）</label><div id="snipList" style="display:flex;flex-direction:column;gap:6px"></div></div>`;
+  const snipBox=wrap.querySelector('#snipList');
+  const renderSnips=()=>{
+    snipBox.innerHTML=S.snips.map(s=>`<div style="display:flex;gap:6px;align-items:center">
+      <button data-snip="${esc(s.id)}" style="flex:1;text-align:left;border:1px solid var(--rule);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.text)}</button>
+      <button data-snipdel="${esc(s.id)}" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:10px;padding:6px 10px;font-size:12px">†</button>
+    </div>`).join('')||'<div style="font-size:11.5px;color:var(--faint)">暂无书签。在「+ → 插入常用提词片段」页可新增。</div>';
+    snipBox.querySelectorAll('[data-snip]').forEach(b=>b.onclick=()=>{const s=S.snips.find(x=>x.id===b.dataset.snip);if(!s)return;input.value+=(input.value?'，':'')+s.text;autoGrow();closeOverlays();input.focus();toast('书签已插入输入框');});
+    snipBox.querySelectorAll('[data-snipdel]').forEach(b=>b.onclick=()=>{S.snips=S.snips.filter(x=>x.id!==b.dataset.snipdel);store.set('xy_snips',S.snips);renderSnips();toast('书签已删除');});
+  };
+  renderSnips();
   box.appendChild(wrap);
   wrap.querySelector('#sizeSel').onchange=e=>{S.size=e.target.value;store.set('xy_size',S.size);};
   wrap.querySelector('#cntSel').onchange=e=>{S.count=+e.target.value;store.set('xy_count',S.count);};
@@ -1278,11 +1313,25 @@ function openParams(){
   sr.oninput=()=>{S.strength=+sr.value;store.set('xy_strength',S.strength);wrap.querySelector('#strVal').textContent=S.strength+'%';};
   const nt=wrap.querySelector('#negText');
   nt.oninput=()=>{S.neg=nt.value.slice(0,300);store.set('xy_neg',S.neg);};
-  wrap.querySelector('#negFix').onclick=()=>{
-    const fix='lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, cross-eyed, extra digits, fused fingers, bad hands, mutated hands, long neck, blurry';
-    nt.value=fix;S.neg=fix;store.set('xy_neg',S.neg);toast('已填入防崩负面词，生成时生效');
+  const NEG_PRESET={
+    fix:'lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, cross-eyed, extra digits, fused fingers, bad hands, mutated hands, long neck, blurry',
+    hands:'bad hands, mutated hands, extra fingers, fused fingers, missing fingers, extra digits, fewer digits, malformed limbs',
+    style:'photorealistic, realistic, 3d render, photo, western cartoon, chibi'
   };
-  wrap.querySelector('#negClear').onclick=()=>{nt.value='';S.neg='';store.set('xy_neg',S.neg);toast('负面词已清空');};
+  wrap.querySelectorAll('[data-neg]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.neg;
+    if(k==='clear'){nt.value='';S.neg='';store.set('xy_neg',S.neg);toast('负面词已清空');return;}
+    const cur=nt.value.replace(/\s*$/,'');const add=NEG_PRESET[k];
+    const val=cur?(cur.includes(add)?cur:cur+', '+add):add;
+    nt.value=val.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
+    toast(k==='fix'?'已追加防崩负面词':k==='hands'?'已追加手部修正词':'已追加画风排除词');
+  });
+  const seedInp=wrap.querySelector('#seedText');
+  seedInp.oninput=()=>{S.seed=seedInp.value.trim().slice(0,18);store.set('xy_seed',S.seed);};
+  wrap.querySelector('#seedRand').onclick=()=>{seedInp.value='';S.seed='';store.set('xy_seed',S.seed);toast('已切回随机种子');};
+  const cwr=wrap.querySelector('#cwRange');
+  cwr.oninput=()=>{S.codeWeight=+cwr.value;store.set('xy_codeweight',S.codeWeight);wrap.querySelector('#cwVal').textContent=S.codeWeight.toFixed(2);};
+  wrap.querySelector('#rawToggle').onchange=e=>{S.raw=e.target.checked;store.set('xy_raw',S.raw);toast(S.raw?'无限制开启：提示词原样直传':'无限制关闭：恢复兜底词与画风修饰');};
   wrap.querySelector('#qtToggle').onchange=e=>{S.qtags=e.target.checked;store.set('xy_qtags',S.qtags);toast(S.qtags?'已开启画质标签':'已关闭画质标签');};
   wrap.querySelector('#codeToggle').onchange=e=>{S.codeMode=e.target.checked;store.set('xy_code_mode',S.codeMode);toast(S.codeMode?'已开启参数码模式':'已关闭参数码模式');};
   wrap.querySelector('#trToggle').onchange=e=>{S.translate=e.target.checked;store.set('xy_translate',S.translate);toast(S.translate?'已开启自动翻译':'已关闭自动翻译');};
@@ -2097,10 +2146,50 @@ $('#btnPlus').onclick=()=>{
     {icon:'copy',txt:'上传参考图（最多 3 张）',fn:()=>$('#fileRef').click()},
     {icon:'quote',txt:'插入常用提词片段',fn:openSnips},
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
-    {icon:'undo',txt:'生成参数（尺寸/张数/强度/负面词）',fn:openParams},
+    {icon:'undo',txt:'生成参数（尺寸/张数/强度/Seed/负面词）',fn:openParams},
+    {icon:'redo',txt:'批量抽卡（变量轮换出整套）',fn:openBatch},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
   ]);
 };
+
+/* ================= 批量抽卡：主体描述 + 变量行轮换，逐张串行出整套 ================= */
+function openBatch(){
+  openSheet('批量抽卡（变量轮换出整套）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const vars=store.get('xy_batch_vars','');
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  wrap.innerHTML=`
+    <div class="field"><label>主体描述（用 {x} 当变量占位，可不放）</label>
+      <textarea id="batSubj" rows="3" placeholder="例：{x}的少女，站在樱花树下，柔和光线" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);resize:vertical"></textarea></div>
+    <div class="field"><label>变量（每行一个，按行轮换替换 {x}）</label>
+      <textarea id="batVars" rows="4" placeholder="例：&#10;红裙白衬衫&#10;黑色JK制服&#10;冬季大衣围巾" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);resize:vertical">${esc(vars)}</textarea>
+      <div style="font-size:11.5px;color:var(--muted)">逐张串行生成，中途可切页但不建议关页面；每张都走你当前配置的模型与参数。</div></div>
+    <button id="batGo" style="width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:14px;padding:13px;font-size:14.5px;font-weight:600;margin-top:2px">开始批量抽卡</button>`;
+  box.appendChild(wrap);
+  wrap.querySelector('#batGo').onclick=async()=>{
+    const subj=wrap.querySelector('#batSubj').value.trim();
+    const lines=wrap.querySelector('#batVars').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,20);
+    if(!subj)return toast('先写主体描述');
+    if(!lines.length)return toast('至少写一行变量');
+    store.set('xy_batch_vars',lines.join('\n'));
+    closeOverlays();
+    toast('批量抽卡开始：共 '+lines.length+' 张，逐张出图');
+    setPresence('批量抽卡中…',true);S.busy=true;$('#btnSend').disabled=true;
+    let ok=0;
+    try{
+      for(let i=0;i<lines.length;i++){
+        const text=subj.split('{x}').join(lines[i]);
+        setPresence('批量 '+(i+1)+'/'+lines.length+'…',true);
+        try{await runGeneration({userText:text});ok++;}
+        catch(e){toast('第 '+(i+1)+' 张失败：'+String(e.message||e).slice(0,60));}
+        await new Promise(r=>setTimeout(r,400));
+      }
+    }finally{
+      S.busy=false;$('#btnSend').disabled=false;setPresence('在线 · 随时开画');
+      toast('批量抽卡完成：成功 '+ok+'/'+lines.length+' 张');
+    }
+  };
+}
 
 /* ================= 润色提示词（助手） ================= */
 const POLISH_RE=/(润色|扩写|改写|优化|丰富).{0,8}(提示词|prompt|这句|一下)|(帮我把|帮我将|帮我用).{0,24}(扩写|润色|改写|丰富)/i;
@@ -2191,16 +2280,17 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   if(userText)parts.push(userText);
   if(extraPrompt)parts.push(extraPrompt);
   const refWord=S.strength>=80?'严格参考所附画风参考图':S.strength>=50?'重点参考所附画风参考图':'仅借鉴所附画风参考图的整体氛围';
+  const cw=S.codeWeight>=1.6?'硬性锁定，权重极高':S.codeWeight>=1.2?'严格遵循':S.codeWeight>=0.9?'重点倾向':'轻量倾向';
   if(st){
-    parts.push('整体画风：'+refWord+'，'+(S.strength>=50?'保持':'倾向')+'「'+st.name+'」的画风、笔触质感与色彩倾向。');
-    // 风格参数码：把画风固化为一段描述随提示词传输（类似 MJ 的 --p），不依赖参考图的模型也能锁风格
-    if(S.codeMode&&st.code)parts.push('风格参数码（严格遵循这段画风特征）：'+st.code);
+    if(!S.raw)parts.push('整体画风：'+refWord+'，'+(S.strength>=50?'保持':'倾向')+'「'+st.name+'」的画风、笔触质感与色彩倾向。');
+    // 风格参数码：把画风固化为一段描述随提示词传输（类似 MJ 的 --p），强度可调
+    if(S.codeMode&&st.code)parts.push('风格参数码（'+cw+'这段画风特征，权重 '+S.codeWeight.toFixed(2)+'）：'+st.code);
   }
   if(cs.length)parts.push('角色形象锁定：'+cs.map(c=>'「'+c.name+'」').join('、')+'严格参考所附角色形象图，保持长相、发型、服饰特征一致。');
   const artsOn=S.artists.filter(a=>a.on&&a.str);
   if(artsOn.length)parts.push(artsOn.map(a=>a.str).join(', '));
   let prompt=parts.filter(Boolean).join('\n');
-  if(S.qtags)prompt='best quality, amazing quality, very aesthetic, absurdres, '+prompt;
+  if(S.qtags&&!S.raw)prompt='best quality, amazing quality, very aesthetic, absurdres, '+prompt; // 无限制模式不追加兜底词
   const refs=[...styleImgs(st),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)];
   const n=Math.max(1,Math.min(4,S.count|0));
 
@@ -2223,7 +2313,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     updateProgress(prog,next,next<25?'提交请求':next<65?(n>1?'生成 '+n+' 张 · 进行中':'模型生成中'):'接收图片');
   },420);
   try{
-    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:S.size,neg:S.neg})));
+    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:S.size,neg:S.neg,seed:S.seed})));
     const imgs=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
     if(!imgs.length){const e=results.find(r=>r.status==='rejected');throw (e&&e.reason)||new Error('生成失败');}
     if(imgs.length<n)toast('有 '+(n-imgs.length)+' 张没出来，其余已收到');
