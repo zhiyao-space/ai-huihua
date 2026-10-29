@@ -715,10 +715,27 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button class="mtab" id="btnBatchAll">补全缺样</button>
       <button class="mtab" id="btnExportSamp">导出小样包</button>
       <button class="mtab" id="btnExportNew">只导新样</button>
+      <button class="mtab" id="btnImportLib">导入串</button>
       <span style="font-size:10.5px;color:var(--faint)">批量/补全都只跑没小样的（内置包已有也算有）；小图右下↻重出一张</span>
     </div>
     <div id="libTabs" style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;flex:0 0 auto"></div>
     <div id="libList" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
+  </div></div>
+  <div class="overlay center" id="impOv"><div class="modal" style="width:min(92%,440px);max-height:84%;overflow:auto;text-align:left">
+    <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <h3 style="font-size:15px;margin:0 0 4px">导入画师串</h3>
+    <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px">两种喂法：① 贴串源链接直接抓（GitHub raw 最稳，普通网页跨域抓不了就复制内容粘贴）；② 下面粘贴内容。小样包 JSON / 词条数组 / 一行一条都认，带图链接的直接当头像，省 API 钱。</p>
+    <div style="display:flex;gap:6px">
+      <input id="impUrl" placeholder="粘贴串源链接…" autocapitalize="off" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-size:12px;outline:none;color:var(--ink)">
+      <button class="mini" id="impFetch" style="flex:0 0 auto">抓取</button>
+    </div>
+    <textarea id="impText" rows="5" placeholder="或直接粘贴，一行一条，比如：&#10;禁欲冰山, artist:ask (zy933), artist:hakuro, 图片链接&#10;也认小样包 JSON / 词条数组" style="width:100%;margin-top:8px;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12px;outline:none;color:var(--ink);resize:vertical"></textarea>
+    <button class="mini" id="impParse" style="margin-top:8px;width:100%">解析预览</button>
+    <div id="impList" style="margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="mini" id="impAll" style="flex:0 0 auto">全选/反选</button>
+      <button class="mini" id="impGo" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)">导入选中</button>
+    </div>
   </div></div>
   <div class="overlay" id="sheetOv"><div class="sheet">
     <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1748,6 +1765,14 @@ const ARTIST_LIB=[
   {c:'combo',n:'SAO 美型',s:'artist:abec, artist:haimura kiyotaka',d:'轻小说系精致美型男生'},
   {c:'combo',n:'优雅贵公子',s:'artist:keeggy, artist:cocomi',d:'古典优雅，贵气逼人'},
   {c:'combo',n:'潮流帅哥',s:'artist:shigenori soejima, artist:rella',d:'P5 系潮流酷感'},
+  {c:'combo',n:'韩系花美男',s:'artist:inplpmo, artist:kjnancing',d:'清冷花美男，轮廓利落'},
+  {c:'combo',n:'清俊韩系立绘',s:'artist:yuunium, artist:rupal',d:'干净通透，韩系帅哥立绘'},
+  {c:'combo',n:'暗调电影硬汉',s:'artist:guweiz, artist:aoi ogata',d:'低饱和暗调，电影质感'},
+  {c:'combo',n:'时尚男模组',s:'artist:maggotney, artist:rella',d:'杂志感男模，酷帅高级'},
+  {c:'combo',n:'铠甲武士帅',s:'artist:prab, artist:gozz, detailed armor',d:'精致铠甲武士，细节华丽'},
+  {c:'combo',n:'禁欲冰山组',s:'artist:ask (zy933), artist:hakuro',d:'清冷禁欲系，高级灰调'},
+  {c:'combo',n:'都市酷男街拍',s:'artist:40hara, artist:neco',d:'现代都市酷男，利落干净'},
+  {c:'combo',n:'剑风暗黑组',s:'artist:kentaro miura, artist:q hayashida',d:'剑风×魔都，暗黑硬派'},
   {c:'combo',n:'哥特华丽男',s:'artist:yana toboso, artist:kurahana chinatsu',d:'黑执事×歌之王子，华丽优雅双神'},
   {c:'combo',n:'和风古韵男',s:'artist:kazuki yone, artist:watase yuu',d:'薄樱鬼×不思议游戏，和风美男'},
   {c:'combo',n:'欧美数绘男',s:'artist:atdan, artist:sakimichan',d:'欧美数绘双雄，性感的肌肉线条'},
@@ -1952,6 +1977,15 @@ const ARTIST_LIB=[
   {c:'male',n:'toshihiro kawamoto',s:'artist:toshihiro kawamoto',d:'川元利浩，星际牛仔帅'},
   {c:'male',n:'q hayashida',s:'artist:q hayashida',d:'林田球，异兽魔都怪诞质感'},
   {c:'male',n:'kohei horikoshi',s:'artist:kohei horikoshi',d:'堀越耕平，我的英雄学院'},
+  {c:'male',n:'678',s:'artist:678',d:'韩系清俊帅哥，氛围感强'},
+  {c:'male',n:'gy',s:'artist:gy',d:'韩国画师，少年感帅哥'},
+  {c:'male',n:'gharliera',s:'artist:gharliera',d:'精致美型男，笔触细腻'},
+  {c:'male',n:'sakon0426',s:'artist:sakon0426',d:'清爽帅气男生，光影柔和'},
+  {c:'male',n:'h2so4',s:'artist:h2so4',d:'硫酸系美型男，质感高级'},
+  {c:'male',n:'tailer231',s:'artist:tailer231',d:'韩系型男立绘，利落干净'},
+  {c:'male',n:'yuunium',s:'artist:yuunium',d:'通透干净韩系男，气质清爽'},
+  {c:'male',n:'inplpmo',s:'artist:inplpmo',d:'花美男细腻画风，五官精致'},
+  {c:'male',n:'kjnancing',s:'artist:kjnancing',d:'清冷帅气，灰调氛围'},
   /* ---- 漫截画风 ---- */
   {c:'style',n:'90s 漫截风',s:'1990s \\(style\\), retro artstyle, anime screencap, film grain'},
   {c:'style',n:'黑白漫画分镜',s:'monochrome, manga panel, screentone, halftone, ink illustration'},
@@ -2018,8 +2052,117 @@ const ARTIST_LIB=[
   {c:'quality',n:'杂志大片',s:'magazine cover, professional lighting, photorealistic'},
   {c:'quality',n:'摄影棚',s:'studio photography, softbox lighting, 85mm lens'},
   {c:'quality',n:'胶片质感',s:'kodak portra 400, film grain, analog photo'},
+  /* ---- 单人表情 ---- */
+  {c:'exp1',n:'微笑',s:'smile'},
+  {c:'exp1',n:'咧嘴笑',s:':d, grin, open mouth'},
+  {c:'exp1',n:'大笑',s:'laughing, open mouth'},
+  {c:'exp1',n:'害羞脸红',s:'blush, embarrassed, looking away'},
+  {c:'exp1',n:'捂脸害羞',s:'covering face, blush, embarrassed'},
+  {c:'exp1',n:'委屈含泪',s:'teary-eyed, watery eyes, pout'},
+  {c:'exp1',n:'掉眼泪',s:'crying, tears, open mouth'},
+  {c:'exp1',n:'生气',s:'angry, frown, clenched teeth'},
+  {c:'exp1',n:'鼓嘴鼓脸',s:'puffed cheeks, pout'},
+  {c:'exp1',n:'惊讶',s:'surprised, wide-eyed, open mouth'},
+  {c:'exp1',n:'呆住无表情',s:'expressionless, empty eyes'},
+  {c:'exp1',n:'无语半睁眼',s:'half-closed eyes, unamused'},
+  {c:'exp1',n:'困倦打哈欠',s:'yawning, sleepy, closed eyes'},
+  {c:'exp1',n:'眨眼',s:'wink, one eye closed, smile'},
+  {c:'exp1',n:'吐舌',s:'tongue out, :p'},
+  {c:'exp1',n:'舔唇',s:'licking lips'},
+  {c:'exp1',n:'咬唇',s:'biting lip'},
+  {c:'exp1',n:'坏笑得意',s:'smirk, smug, half-closed eyes'},
+  {c:'exp1',n:'冷笑',s:'evil smile, smirk'},
+  {c:'exp1',n:'心心眼',s:'heart-shaped pupils, blush'},
+  {c:'exp1',n:'星星眼',s:'star-shaped pupils, sparkling eyes'},
+  {c:'exp1',n:'惊恐',s:'scared, wide-eyed, open mouth, sweat'},
+  {c:'exp1',n:'发呆放空',s:'expressionless, empty eyes, z'},
+  {c:'exp1',n:'傲娇瞪',s:'glare, puffed cheeks, blush'},
+  {c:'exp1',n:'泪光闪闪',s:'glistening eyes, teary-eyed'},
+  {c:'exp1',n:'咬牙',s:'clenched teeth, gritted teeth'},
+  {c:'exp1',n:'偷笑',s:'covering mouth, smiling, closed eyes'},
+  {c:'exp1',n:'认真专注',s:'serious, determined'},
+  {c:'exp1',n:'死鱼眼',s:'empty eyes, half-closed eyes'},
+  {c:'exp1',n:'兴奋两眼放光',s:'sparkling eyes, happy, open mouth'},
+  {c:'exp1',n:'满脸通红',s:'blush, wavy mouth, embarrassed'},
+  {c:'exp1',n:'憋笑',s:'covering mouth, smiling, half-closed eyes'},
+  {c:'exp1',n:'嚎啕大哭',s:'crying, tears, screaming, open mouth'},
+  {c:'exp1',n:'笑眯眯',s:'closed eyes, smile, happy'},
+  {c:'exp1',n:'兴奋握拳',s:'clenched hands, happy, open mouth'},
+  /* ---- 双人表情 ---- */
+  {c:'exp2',n:'深情对视',s:'eye contact, face-to-face, smile'},
+  {c:'exp2',n:'贴脸',s:'cheek to cheek, smiling, blush'},
+  {c:'exp2',n:'额头相抵',s:'head to head, face-to-face, closed eyes'},
+  {c:'exp2',n:'咬耳朵说悄悄话',s:'whisper, leaning close, hand on cheek'},
+  {c:'exp2',n:'亲脸颊',s:'kiss on the cheek, blush'},
+  {c:'exp2',n:'近距离凑近',s:'face-to-face, leaning close'},
+  {c:'exp2',n:'互瞪',s:'glare, face-to-face, serious'},
+  {c:'exp2',n:'笑作一团',s:'laughing, hugging, happy'},
+  {c:'exp2',n:'贴贴',s:'cuddling, holding each other, smile'},
+  {c:'exp2',n:'脸红对视',s:'blush, eye contact, face-to-face'},
+  {c:'exp2',n:'偷偷瞄',s:'looking at another, blush'},
+  {c:'exp2',n:'撒娇粘人',s:'hugging arm, leaning close, blush'},
+  {c:'exp2',n:'鼻尖碰鼻尖',s:'face-to-face, almost kiss, closed eyes'},
+  {c:'exp2',n:'投喂',s:'feeding, holding spoon, open mouth'},
+  {c:'exp2',n:'分享耳机',s:'shared earphones, smile, blush'},
+  {c:'exp2',n:'一起欢呼',s:'cheering, raised arms, open mouth, happy'},
+  /* ---- 单人姿势 ---- */
+  {c:'pos1',n:'双手抱胸',s:'arms crossed, standing'},
+  {c:'pos1',n:'插兜',s:'hand in pocket, standing'},
+  {c:'pos1',n:'叉腰',s:'akimbo, standing'},
+  {c:'pos1',n:'比剪刀手',s:'v, smile'},
+  {c:'pos1',n:'挥手打招呼',s:'waving, smile, standing'},
+  {c:'pos1',n:'敬礼',s:'salute, standing'},
+  {c:'pos1',n:'托腮思考',s:'hand on own chin, looking away'},
+  {c:'pos1',n:'托脸',s:'hand on own cheek, head tilt'},
+  {c:'pos1',n:'伸懒腰',s:'stretching, arms up, yawning'},
+  {c:'pos1',n:'回头看',s:'looking back, from behind'},
+  {c:'pos1',n:'蹲着',s:'squatting, looking at viewer'},
+  {c:'pos1',n:'盘腿坐',s:'cross-legged, sitting'},
+  {c:'pos1',n:'正坐',s:'seiza, sitting, hands on lap'},
+  {c:'pos1',n:'翘腿坐',s:'sitting, crossing legs'},
+  {c:'pos1',n:'仰躺',s:'lying on back, lying'},
+  {c:'pos1',n:'侧躺',s:'lying on side, lying'},
+  {c:'pos1',n:'趴着',s:'lying on stomach, lying'},
+  {c:'pos1',n:'靠墙',s:'against wall, arms crossed'},
+  {c:'pos1',n:'走路',s:'walking, from side'},
+  {c:'pos1',n:'奔跑',s:'running, dynamic pose'},
+  {c:'pos1',n:'跳起来',s:'jumping, mid-air, arms up'},
+  {c:'pos1',n:'转圈',s:'twirling, arm up, dynamic pose'},
+  {c:'pos1',n:'撑伞',s:'holding umbrella, standing'},
+  {c:'pos1',n:'看书',s:'holding book, reading, sitting'},
+  {c:'pos1',n:'喝饮料',s:'drinking through straw, holding cup'},
+  {c:'pos1',n:'吃东西',s:'eating, holding food'},
+  {c:'pos1',n:'抱膝坐',s:'hugging own legs, sitting'},
+  {c:'pos1',n:'睡觉',s:'sleeping, lying, on bed'},
+  {c:'pos1',n:'趴桌睡',s:'sleeping, head rest, on table'},
+  {c:'pos1',n:'举双臂',s:'raised arms, v'},
+  {c:'pos1',n:'招手过来',s:'come hither, beckoning, smile'},
+  {c:'pos1',n:'背手',s:'arms behind back, standing'},
+  /* ---- 双人姿势 ---- */
+  {c:'pos2',n:'公主抱',s:'princess carry'},
+  {c:'pos2',n:'背背',s:'piggyback'},
+  {c:'pos2',n:'牵手',s:'holding hands'},
+  {c:'pos2',n:'十指相扣',s:'interlocked fingers, holding hands'},
+  {c:'pos2',n:'搂肩',s:'arm around shoulder'},
+  {c:'pos2',n:'环腰',s:'arm around waist'},
+  {c:'pos2',n:'背后抱',s:'hugging from behind'},
+  {c:'pos2',n:'背靠背',s:'back to back'},
+  {c:'pos2',n:'靠在肩上',s:'head on shoulder, sitting'},
+  {c:'pos2',n:'枕腿',s:'lap pillow, head on lap'},
+  {c:'pos2',n:'摸头',s:'head pat'},
+  {c:'pos2',n:'挽臂',s:'arm in arm, walking'},
+  {c:'pos2',n:'壁咚',s:'kabedon, arm support, leaning forward'},
+  {c:'pos2',n:'抬下巴',s:'face-to-face, hand on cheek, smirk'},
+  {c:'pos2',n:'高低差',s:'height difference, standing'},
+  {c:'pos2',n:'共撑伞',s:'shared umbrella, holding umbrella'},
+  {c:'pos2',n:'跳舞',s:'dancing, holding hands'},
+  {c:'pos2',n:'亲额头',s:'kiss on the forehead'},
+  {c:'pos2',n:'拉手腕',s:'wrist grab'},
+  {c:'pos2',n:'碰拳鼓劲',s:'fist bump'},
+  {c:'pos2',n:'头靠头',s:'heads together, smiling'},
+  {c:'pos2',n:'同围一条围巾',s:'shared scarf'},
 ];
-const LIB_CATS=[['mine','我的串'],['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
+const LIB_CATS=[['mine','我的串'],['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀'],['exp1','单人表情'],['exp2','双人表情'],['pos1','单人姿势'],['pos2','双人姿势']];
 let libTab='combo',libQ='';
 const libHas=s=>S.artists.some(a=>a.str===s);
 function libAdd(it){
@@ -2262,6 +2405,128 @@ $('#btnLib').onclick=()=>{
   ovOpen();$('#libOv').classList.add('show');
 };
 $('#libSearch').oninput=e=>{libQ=e.target.value;renderLibTabs();renderLibList();};
+
+/* ================= 导入画师串：链接/粘贴双通道，带图源直接当头像（省 API） ================= */
+let impItems=[];
+const impKey=s=>String(s||'').toLowerCase().replace(/\s+/g,' ');
+function impDup(s){
+  const k=impKey(s);
+  return ARTIST_LIB.some(it=>impKey(it.s)===k)||(S.myCombos||[]).some(c=>impKey(c.s)===k)||S.artists.some(a=>impKey(a.str)===k);
+}
+function impNameOf(s){ // 从串内容顺手取个名
+  const m=String(s).match(/artist:\s*([^,]+)/);
+  if(m)return '画师 '+m[1].trim();
+  const t=String(s).split(/[,，]/).map(x=>x.trim()).filter(Boolean)[0]||'';
+  return (t||'导入串').slice(0,16);
+}
+function impNorm(o){ // JSON 词条：兼容 n/name/title、s/str/tag/prompt、img/image/url 等字段名；纯字符串当一行解析
+  if(typeof o==='string')return impLine(o);
+  if(!o||typeof o!=='object')return null;
+  let s=o.s||o.str||o.tag||o.tags||o.prompt||o.artist||o.artists||o['串']||'';
+  if(Array.isArray(s))s=s.join(', ');
+  s=String(s).trim();
+  if(!s)return null;
+  const n=String(o.n||o.name||o.title||o['名']||'').trim()||impNameOf(s);
+  const img=String(o.img||o.image||o.thumb||o.avatar||o.url||o.pic||'').trim();
+  return {n:n.slice(0,24),s:s,d:String(o.d||o.desc||o.note||'导入').slice(0,40),img:img,on:true};
+}
+function impLine(l){ // 一行一条：支持「中文名, 串, 图URL」「中文名:tags」「纯串」；中文段取名，英文段拼串
+  l=(l||'').trim().replace(/^[-*•\d]+[.、)．:：\s]*/,'');
+  if(!l)return null;
+  const url=(l.match(/https?:\/\/\S+/)||[''])[0];
+  let body=(url?l.replace(url,''):l).trim().replace(/[,，;；\s]+$/,'');
+  if(!body)return null;
+  const segs=body.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
+  let n='',parts=[];
+  for(const seg of segs){
+    const cm=seg.match(/^([\u3400-\u9fff\uf900-\ufaff][^:：]{0,20})[:：]\s*(.+)$/); // 「中文名:tags」整体一段
+    if(cm&&!parts.length&&!n){n=cm[1].trim();cm[2].split(/[,，]/).forEach(x=>{x=x.trim();if(x)parts.push(x);});continue;}
+    if(/[\u3400-\u9fff\uf900-\ufaff]/.test(seg)){
+      if(!parts.length&&!n&&seg.length<=16){n=seg.replace(/[【】\[\]（）()]/g,'').trim();continue;} // 行首中文名
+      break; // 尾部中文注释丢弃
+    }
+    parts.push(seg);
+  }
+  const s=parts.join(', ').replace(/\s+/g,' ').trim();
+  if(!s)return null;
+  return {n:n||impNameOf(s),s:s,d:'导入',img:url,on:true};
+}
+function impParse(txt){ // 粘贴全文 → 候选列表：兼容导出的小样包 JSON {v:1,imgs:{串:图}} / JSON 数组 / 一行一条
+  txt=(txt||'').trim();
+  if(!txt)return [];
+  if(txt[0]==='{'||txt[0]==='['){
+    try{
+      const j=JSON.parse(txt);
+      if(j&&j.imgs&&typeof j.imgs==='object'&&!Array.isArray(j.imgs)){ // 小样包原样回灌：串+头像一起回来
+        return Object.keys(j.imgs).map(k=>({n:impNameOf(k),s:k,d:'小样包',img:j.imgs[k],on:!impDup(k)}));
+      }
+      const arr=Array.isArray(j)?j:(j&&Array.isArray(j.list)?j.list:null);
+      if(arr)return arr.map(o=>impNorm(o)).filter(Boolean);
+    }catch(e){}
+  }
+  return txt.split(/\n+/).map(impLine).filter(Boolean);
+}
+function impRender(){
+  const box=$('#impList');if(!box)return;
+  if(!impItems.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint);padding:4px 2px">还没解析出串。贴好后点「解析预览」，点词条勾选/取消。</div>';return;}
+  box.innerHTML=impItems.map((it,i)=>{
+    const dup=impDup(it.s);
+    const sm=it.img||libImgOf(it.s);
+    return '<button class="libchip'+(dup?' added':'')+'" data-i="'+i+'"'+(it.on?'':' style="opacity:.38"')+'>'
+      +'<span class="libside">'+(sm?'<img class="libthumb" loading="lazy" decoding="async" src="'+esc(sm)+'" alt="">':'<span class="libthumb empty">无图</span>')+'</span>'
+      +'<span class="libtxt"><b>'+esc(it.n)+(dup?' · 词库已有':'')+'</b><span>'+esc(it.s)+'</span>'+(it.img?'<em>自带头像</em>':'')+'</span></button>';
+  }).join('');
+  $$('#impList .libchip').forEach(b=>{b.onclick=()=>{const it=impItems[+b.dataset.i];if(!it)return;it.on=!it.on;impRender();};});
+}
+$('#btnImportLib').onclick=()=>{
+  impItems=[];$('#impText').value='';$('#impUrl').value='';impRender();
+  ovOpen();$('#impOv').classList.add('show');
+};
+$('#impOv').addEventListener('click',e=>{if(e.target===$('#impOv'))$('#impOv').classList.remove('show');}); // 垫底还有词库，只关自己不动历史栈
+$('#impOv .ov-x').onclick=()=>{$('#impOv').classList.remove('show');};
+$('#impParse').onclick=()=>{
+  impItems=impParse($('#impText').value);
+  impRender();
+  toast(impItems.length?'解析出 '+impItems.length+' 条，点词条勾选，灰的是库里已有的':'没解析出串：一行一条，或小样包 JSON');
+};
+$('#impFetch').onclick=async()=>{
+  const u=$('#impUrl').value.trim();
+  if(!u)return toast('先贴一个串源链接（GitHub raw 链接最稳）');
+  toast('正在抓取…');
+  try{
+    const r=await fetch(u);
+    if(!r.ok)throw new Error('http '+r.status);
+    const t=await r.text();
+    $('#impText').value=t;
+    impItems=impParse(t);impRender();
+    toast('抓到 '+impItems.length+' 条，检查勾选后点「导入选中」');
+  }catch(e){
+    toast('这个链接跨域抓不了，把网页内容复制粘贴到下面文本框一样能导');
+  }
+};
+$('#impAll').onclick=()=>{
+  if(!impItems.length)return;
+  const allOn=impItems.every(it=>it.on);
+  impItems.forEach(it=>{it.on=!allOn;});
+  impRender();
+};
+$('#impGo').onclick=()=>{
+  const sel=impItems.filter(it=>it.on&&!impDup(it.s));
+  if(!sel.length)return toast('没有可导入的：先勾选，或库里已有同款');
+  let withImg=0;
+  sel.forEach(it=>{
+    if(it.img){S.libimg[it.s]={img:it.img,ts:Date.now()};withImg++;}
+    S.myCombos.unshift({id:uid(),n:it.n,s:it.s,d:it.d||'导入'});
+  });
+  const seen=new Set();
+  S.myCombos=S.myCombos.filter(c=>{const k=impKey(c.s);if(!k||seen.has(k))return false;seen.add(k);return true;});
+  store.set('xy_mycombos',S.myCombos);
+  if(withImg)persistLibImg(); // 带图的落 IndexedDB，重启不丢
+  libTab='mine';renderLibTabs();renderLibList(); // 词库直接切到「我的串」，关掉导入层就能看到
+  toast('已导入 '+sel.length+' 条到「我的串」'+(withImg?' · '+withImg+' 条自带头像（零 API 直接显示）':''));
+  impItems=[];impRender();
+  $('#impOv').classList.remove('show');
+};
 
 /* ================= 画风实验室：说一句话，引擎自动配画风 ================= */
 const LAB_BRUSH=[ // a:每组3位同风格画师，按「画师数量」取前N位
@@ -2607,7 +2872,6 @@ function codeShort(en){
 $('#modeChat').onclick=()=>setLabMode(false);
 $('#modeLab').onclick=()=>setLabMode(true);
 $('#btnLab').onclick=()=>{switchTab('chat');setLabMode(true);};
-$('#libOv').addEventListener('click',e=>{if(e.target===e.currentTarget)$('#libOv').classList.remove('show');});
 /* ================= 自定义画风配方器：无内置模板，中文想法 AI 辅助写提词 + 当场画预览 ================= */
 let rBusy=false;
 function rStyleVal(){return $('#rStyle').value.trim();}
