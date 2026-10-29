@@ -1838,10 +1838,13 @@ function sampSetBtns(str,txt,dis){ // 词库/画师串两处同串小样按钮�
 async function genSampleCore(str,label){ // 生成+存储主体，单个与批量共用
   const p=activePreset();
   if(!p||!p.model){toast('先去「配置」页选好绘画模型再出小样');return false;}
-  const subj=S.sampSubj==='boy'?'1boy, solo, portrait, simple background':'1girl, solo, portrait, simple background';
-  const prompt=str+', '+subj+', best quality, amazing quality, very aesthetic, absurdres';
+  const isNaiS=/nai[\s_-]?diffusion/i.test(String(p.model||'')); // NAI 系：官方画质词+标准竖图桶+NAI防崩负面
+  const QT=isNaiS?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
+  const subj=(S.sampSubj==='boy'?'1boy, solo':'1girl, solo')+', upper body, looking at viewer, detailed background, cinematic lighting, depth of field';
+  const prompt=str+', '+subj+', '+QT;
+  const neg=isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG;
   try{
-    const r=await apiGenerate(p,{prompt,size:'512x512',neg:SAMP_NEG});
+    const r=await apiGenerate(p,{prompt,size:isNaiS?'832x1216':'512x512',neg:neg});
     S.libimg[str]={img:r.src,ts:Date.now()};
     await persistLibImg();
     return true;
