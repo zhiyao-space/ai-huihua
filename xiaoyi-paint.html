@@ -1813,10 +1813,11 @@ let bakedP=null;
 function loadBakedSamples(){ // 惰性加载内置小样包 samples.js（文件缺失或为空时静默跳过）
   if(bakedP)return bakedP;
   bakedP=new Promise(res=>{
-    if(window.XY_SAMPLES)return res();
+    if(window.XY_SAMPLES)return res(true);
     const s=document.createElement('script');s.src='samples.js?v=1';
-    s.onload=res;s.onerror=res;document.head.appendChild(s);
-    setTimeout(res,5000);
+    s.onload=()=>res(!!window.XY_SAMPLES); // 不限时：5MB包在手机网络下可能要下好几秒，下完为准
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
   });
   return bakedP;
 }
@@ -1980,7 +1981,7 @@ $$('#libOv [data-ss]').forEach(b=>b.onclick=()=>{
 });
 $('#btnBatch').onclick=batchSamples;
 $('#btnExportSamp').onclick=exportSamples;
-setTimeout(()=>{loadBakedSamples().then(()=>{renderLibList();renderStyleLib();renderArtists();});},1500); // 开机闲时加载内置小样包，加载完刷一遍缩略图
+setTimeout(()=>{loadBakedSamples().then(ok=>{if(ok){renderLibList();renderStyleLib();renderArtists();}else{bakedP=null;}});},1500); // 开机闲时加载内置小样包，加载完刷一遍缩略图；失败清缓存下次再试
 $('#btnLib').onclick=()=>{
   $('#libSearch').value='';libQ='';libTab='combo';
   renderSampSubj();
