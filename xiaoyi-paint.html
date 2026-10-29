@@ -271,7 +271,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .composer .ta-wrap:focus-within{border-color:var(--rule2);}
 .composer .ta-wrap textarea{
   display:block; width:100%; resize:none; border:0; background:transparent;
-  padding:10px 14px; font-size:14.5px; line-height:1.5; max-height:130px; min-height:64px;
+  padding:10px 14px; font-size:14.5px; line-height:1.5; max-height:240px; min-height:96px;
   outline:none; position:relative; z-index:2;
 }
 #taHL{ /* NAI 式高亮层：与输入框同字体同排版，只画标签底色不画字（字由上层输入框渲染） */
@@ -804,7 +804,7 @@ const S={
     {id:uid(),name:'赛博霓虹',str:'neon lighting, cyberpunk style, blade runner atmosphere',on:false},
     {id:uid(),name:'清新水彩',str:'watercolor, soft edges, pastel colors',on:false}],
   artistsW:store.get('xy_artists_w',{}), // 画师权重表：key=画师串id，值 0.2~1.5（1 默认不加权）
-  myCombos:store.get('xy_mycombos',null)||[], // 我的画师串（配方器产物）：[{id,n,s,d}]
+  myCombos:(()=>{const raw=store.get('xy_mycombos',null)||[];const seen=new Set();return raw.filter(c=>{const k=String(c.s||'').toLowerCase();if(!k||seen.has(k))return false;seen.add(k);return true;});})(), // 我的画师串（按串内容自动去重，防重复保存堆积）
   neg:store.get('xy_neg',''),
   seed:store.get('xy_seed',''), // 空=随机；填固定值=同提示词稳定重roll
   codeWeight:store.get('xy_codeweight',1.2), // 参数码强度
@@ -1381,7 +1381,7 @@ function tgInsert(word){ // 把光标处当前词替换成补全结果，光标�
 input.addEventListener('input',tgRender);
 input.addEventListener('focus',()=>{if(input.value.trim())tgRender();});
 input.addEventListener('blur',()=>setTimeout(tgHide,160));
-function autoGrow(){input.style.height='auto';input.style.height=Math.max(64,Math.min(input.scrollHeight,130))+'px';}
+function autoGrow(){input.style.height='auto';input.style.height=Math.max(96,Math.min(input.scrollHeight,240))+'px';}
 input.addEventListener('input',autoGrow);
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}});
 $('#btnSend').onclick=()=>handleSend();
@@ -2760,6 +2760,8 @@ function openComboLab(){
   };
   $('#clSave').onclick=()=>{
     const str=comboStr();if(!str)return toast('先加原料');
+    const dup=S.myCombos.find(c=>String(c.s).toLowerCase()===str.toLowerCase());
+    if(dup)return toast('这条串已经存过啦：「'+dup.n+'」');
     const n=comboName();
     S.myCombos.unshift({id:uid(),n,s:str,d:'配方 · '+comboIng.length+' 条'});
     store.set('xy_mycombos',S.myCombos);
@@ -2804,10 +2806,12 @@ function renderComboRes(q){ // 候选：我的串 + 组合串（整条做原料�
     ...(S.myCombos||[]).map(c=>({n:c.n,s:c.s,d:'我的串',k:'merge'})),
     ...ARTIST_LIB.filter(x=>x.c==='combo').map(x=>({n:x.n,s:x.s,d:x.d,k:'merge'})),
     ...ARTIST_LIB.filter(x=>x.c==='artist'||x.c==='male'||x.c==='unisex').map(x=>({n:x.n,s:x.s,d:x.d,k:'artist'})),
-  ].filter(match).slice(0,8);
-  if(!pool.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint)">没搜到就走下面的手输 / 描述词通道</div>';return;}
+  ].filter(match);
+  const seen=new Set(); // 同串内容只显示一次
+  const uniq=pool.filter(x=>{const k=x.s.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;}).slice(0,8);
+  if(!uniq.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint)">没搜到就走下面的手输 / 描述词通道</div>';return;}
   box.innerHTML='';
-  pool.forEach(x=>{
+  uniq.forEach(x=>{
     const b=document.createElement('button');b.type='button';
     b.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:10px;padding:5px 8px;font-size:12px';
     const im=libImgOf(x.s);
