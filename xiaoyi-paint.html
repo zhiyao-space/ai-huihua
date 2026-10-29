@@ -262,21 +262,41 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .composer{
   position:relative; flex:0 0 auto; border-top:1px solid var(--rule); padding:10px 12px calc(12px);
   background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(14px);
-  display:flex; align-items:flex-end; gap:8px;
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px;
 }
-.composer textarea{
-  flex:1; resize:none; border:1px solid var(--rule); background:var(--surface);
-  border-radius:16px; padding:10px 14px; font-size:14.5px; line-height:1.5; max-height:130px; min-height:64px;
-  outline:none; transition:border-color .2s ease;
+.composer .ta-wrap{
+  position:relative; flex:1; min-width:0; background:var(--surface);
+  border:1px solid var(--rule); border-radius:16px; transition:border-color .2s ease;
 }
-.composer textarea:focus{border-color:var(--rule2);}
+.composer .ta-wrap:focus-within{border-color:var(--rule2);}
+.composer .ta-wrap textarea{
+  display:block; width:100%; resize:none; border:0; background:transparent;
+  padding:10px 14px; font-size:14.5px; line-height:1.5; max-height:130px; min-height:64px;
+  outline:none; position:relative; z-index:2;
+}
+#taHL{ /* NAI 式高亮层：与输入框同字体同排版，只画标签底色不画字（字由上层输入框渲染） */
+  position:absolute; inset:0; z-index:1; padding:10px 14px; font-size:14.5px; line-height:1.5;
+  white-space:pre-wrap; word-break:break-word; overflow-wrap:break-word; color:transparent;
+  pointer-events:none; overflow:hidden;
+}
+#taHL mark{background:color-mix(in srgb, var(--accent) 15%, transparent); border-radius:5px; color:transparent;}
+#taHL mark.onw{background:color-mix(in srgb, var(--accent) 28%, transparent);}
+/* 提示词画师标签条（NAI 式，输入框上方） */
+#prTags{display:none; order:-1; width:100%; gap:6px; overflow-x:auto; padding:2px 2px 0; -webkit-overflow-scrolling:touch;}
+#prTags.show{display:flex;}
+.pr-chip{flex:0 0 auto; display:flex; align-items:center; gap:6px; border:1px solid var(--rule2); background:var(--elev); color:var(--ink); border-radius:999px; padding:3px 10px 3px 4px; font-size:12px; max-width:150px; transition:transform .12s ease, border-color .18s ease;}
+.pr-chip:active{transform:scale(.95);}
+.pr-chip img{width:22px; height:22px; border-radius:999px; object-fit:cover; background:var(--hover); flex:0 0 auto;}
+.pr-chip .pc-n{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+.pr-chip .pc-w{font-size:10.5px; color:var(--muted); flex:0 0 auto;}
 /* tag 输入联想面板（NovelAI 式，锚在输入框上方） */
 #tagSug{position:absolute;left:10px;right:10px;bottom:100%;margin-bottom:8px;background:var(--elev);border:1px solid var(--rule2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:30;}
 #tagSug.show{display:block;}
 #tagSug .tg-quick{display:flex;gap:6px;overflow-x:auto;padding-bottom:7px;border-bottom:1px solid var(--rule);margin-bottom:6px;}
 #tagSug .tg-quick button{flex:0 0 auto;font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--rule2);background:transparent;color:var(--muted);}
-#tagSug .tg-list button{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:8px;border-radius:10px;font-size:13px;}
+#tagSug .tg-list button{display:flex;gap:8px;align-items:center;width:100%;text-align:left;border:0;background:transparent;color:var(--ink);padding:8px;border-radius:10px;font-size:13px;}
 #tagSug .tg-list button:active{background:var(--hover);}
+#tagSug .tg-img{width:26px;height:26px;border-radius:8px;object-fit:cover;flex:0 0 26px;background:var(--hover);}
 #tagSug .tg-tag{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
 #tagSug .tg-cn{font-size:10.5px;color:var(--muted);flex:0 0 auto;}
 .cbtn{
@@ -485,10 +505,11 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button id="transClose">✕</button>
     </div>
     <div class="composer">
+      <div id="prTags"></div>
       <button class="cbtn" id="btnPlus" title="绘画工具">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       </button>
-      <textarea id="input" rows="3" placeholder="描述想画的内容…"></textarea>
+      <div class="ta-wrap"><div id="taHL"></div><textarea id="input" rows="3" placeholder="描述想画的内容…"></textarea></div>
       <button class="cbtn send" id="btnSend" title="发送">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6.5 11.5L12 5.6l5.5 5.9"/></svg>
       </button>
@@ -552,6 +573,9 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
         <div id="artistList"></div>
         <button class="add-card" id="btnAddArtist">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>添加画师串
+        </button>
+        <button class="add-card" id="btnComboLab" style="margin-top:10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h7M4 18h10"/><circle cx="18" cy="6" r="2.5"/><circle cx="15.5" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></svg>画师串配方器（选画师 / 手输 tag / 调权重，存为我的串）
         </button>
       </div>
       <div class="sec">
@@ -780,6 +804,7 @@ const S={
     {id:uid(),name:'赛博霓虹',str:'neon lighting, cyberpunk style, blade runner atmosphere',on:false},
     {id:uid(),name:'清新水彩',str:'watercolor, soft edges, pastel colors',on:false}],
   artistsW:store.get('xy_artists_w',{}), // 画师权重表：key=画师串id，值 0.2~1.5（1 默认不加权）
+  myCombos:store.get('xy_mycombos',null)||[], // 我的画师串（配方器产物）：[{id,n,s,d}]
   neg:store.get('xy_neg',''),
   seed:store.get('xy_seed',''), // 空=随机；填固定值=同提示词稳定重roll
   codeWeight:store.get('xy_codeweight',1.2), // 参数码强度
@@ -1321,7 +1346,7 @@ function tgRender(){
   const am=t.match(/^artist[:：]\s*(.*)$/);
   if(am){ // artist: 前缀直接联想画师串词库
     const q=am[1];
-    list=ARTIST_LIB.filter(x=>(x.c==='artist'||x.c==='male'||x.c==='unisex')&&(!q||x.n.toLowerCase().includes(q))).slice(0,6).map(x=>({tag:'artist:'+x.n,cn:x.d}));
+    list=ARTIST_LIB.filter(x=>(x.c==='artist'||x.c==='male'||x.c==='unisex')&&(!q||x.n.toLowerCase().includes(q))).slice(0,6).map(x=>({tag:'artist:'+x.n,cn:x.d,s:x.s}));
   }else if(t){
     list=TAG_LIB.filter(x=>x.tag!==t&&x.tag.includes(t)).slice(0,6);
   }
@@ -1331,7 +1356,7 @@ function tgRender(){
   const lb=$('#tgList');lb.innerHTML='';
   list.forEach(x=>{
     const b=document.createElement('button');b.type='button';
-    b.innerHTML='<span class="tg-tag">'+esc(x.tag)+'</span>'+(x.cn?'<span class="tg-cn">'+esc(x.cn)+'</span>':'');
+    b.innerHTML=(x.s&&libImgOf(x.s)?'<img class="tg-img" loading="lazy" src="'+libImgOf(x.s)+'" alt="">':'')+'<span class="tg-tag">'+esc(x.tag)+'</span>'+(x.cn?'<span class="tg-cn">'+esc(x.cn)+'</span>':'');
     b.onpointerdown=e=>{e.preventDefault();tgInsert(x.tag);};
     lb.appendChild(b);
   });
@@ -1344,7 +1369,7 @@ function tgInsert(word){ // 把光标处当前词替换成补全结果，光标�
   input.value=input.value.slice(0,start)+word+need+rest;
   const pos=start+word.length+need.length;
   input.focus();input.setSelectionRange(pos,pos);
-  tgHide();
+  tgHide();renderPrTags();
 }
 input.addEventListener('input',tgRender);
 input.addEventListener('focus',()=>{if(input.value.trim())tgRender();});
@@ -1353,6 +1378,104 @@ function autoGrow(){input.style.height='auto';input.style.height=Math.max(64,Mat
 input.addEventListener('input',autoGrow);
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend();}});
 $('#btnSend').onclick=()=>handleSend();
+
+/* ================= NAI 式画师标签：输入框内高亮 + 标签条（点标签调权重/出小样/删除） ================= */
+function prBal(str){let d=0;for(const ch of str){if(ch==='(')d++;else if(ch===')')d--;if(d<0)return false;}return d===0;}
+function prFmt(name,w){ // 权重语法：1=裸 tag，其余 (artist:xxx:1.2)
+  w=parseFloat(w)||1;
+  if(Math.abs(w-1)<0.01)return 'artist:'+name;
+  return '(artist:'+name+':'+String(parseFloat(w.toFixed(2)))+')';
+}
+function prParse(v){ // 扫描提示词里的画师标签段（兼容全角冒号 / 外层权重括号 / ask (artist) 内括号）
+  const out=[];const re=/[^,\n]+/g;let m;
+  while((m=re.exec(v))){
+    const raw=m[0];const lead=raw.length-raw.trimStart().length;
+    const s0=raw.trim();if(!s0)continue;
+    const segStart=m.index+lead,segEnd=segStart+s0.length;
+    let s=s0;
+    for(;;){if(/^\(.*\)$/.test(s)&&prBal(s.slice(1,-1))){s=s.slice(1,-1).trim();continue;}break;}
+    let w=1;const wm=s.match(/^(.+?)[:：]\s*([0-9]+(?:\.[0-9]+)?)$/);
+    if(wm&&prBal(wm[1])){s=wm[1].trim();w=parseFloat(wm[2])||1;}
+    const am=s.match(/^artist[:：]\s*(.+)$/i);
+    if(!am||!am[1].trim())continue;
+    out.push({segStart,segEnd,name:am[1].trim(),w});
+  }
+  return out;
+}
+let prDeb=null;
+function renderPrTags(){ // 高亮层 + 标签条一起刷
+  const box=$('#prTags'),hl=$('#taHL');if(!box||!hl)return;
+  const v=input.value;
+  const toks=prParse(v);
+  if(!toks.length){
+    hl.textContent=v+(v.endsWith('\n')?'\u200b':'');
+  }else{
+    let html='',pos=0;
+    toks.forEach(t=>{
+      html+=esc(v.slice(pos,t.segStart));
+      html+='<mark'+(Math.abs(t.w-1)>=0.01?' class="onw"':'')+'>'+esc(v.slice(t.segStart,t.segEnd))+'</mark>';
+      pos=t.segEnd;
+    });
+    html+=esc(v.slice(pos));
+    if(v.endsWith('\n'))html+='\u200b';
+    hl.innerHTML=html;
+  }
+  hl.scrollTop=input.scrollTop;
+  if(!toks.length){box.classList.remove('show');box.innerHTML='';return;}
+  box.classList.add('show');box.innerHTML='';
+  toks.forEach((t,i)=>{
+    const b=document.createElement('button');b.type='button';b.className='pr-chip';
+    const im=libImgOf('artist:'+t.name);
+    b.innerHTML='<img'+(im?' src="'+im+'"':'')+' alt=""><span class="pc-n">'+esc(t.name)+'</span>'+(Math.abs(t.w-1)>=0.01?'<span class="pc-w">×'+String(parseFloat(t.w.toFixed(2)))+'</span>':'');
+    b.onclick=()=>prTagPop(i);
+    box.appendChild(b);
+  });
+}
+function prTagPop(i){ // 点标签：权重滑杆 / 出小样 / 收藏 / 删除
+  const toks=prParse(input.value);const t=toks[i];if(!t)return;
+  openSheet('画师标签 · '+t.name,[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  const im=libImgOf('artist:'+t.name);
+  wrap.innerHTML='<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">'
+    +(im?'<img id="pcPrev" src="'+im+'" style="width:54px;height:54px;border-radius:12px;object-fit:cover;border:1px solid var(--rule);cursor:zoom-in;flex:0 0 auto">':'<span style="width:54px;height:54px;border-radius:12px;border:1px dashed var(--rule2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--faint);flex:0 0 auto;text-align:center">无小样</span>')
+    +'<div style="min-width:0"><div style="font-size:13px;font-weight:600;word-break:break-all">'+esc('artist:'+t.name)+'</div><div style="font-size:11px;color:var(--muted);margin-top:2px">权重控画风浓淡：1 原味，往右更浓，往左更淡</div></div></div>'
+    +'<div class="field"><label>权重 <span id="pcW" style="color:var(--ink);font-weight:600">'+String(parseFloat(t.w.toFixed(2)))+'</span></label>'
+    +'<input type="range" id="pcR" min="0.8" max="1.4" step="0.05" value="'+t.w+'" style="width:100%">'
+    +'<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint)"><span>0.8 淡</span><span>1.0 原味</span><span>1.4 浓</span></div></div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
+    +'<button id="pcSamp" type="button" style="flex:1;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px">'+(im?'重出小样':'出小样')+'</button>'
+    +'<button id="pcSave" type="button" style="flex:1;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px">收藏到画师串</button>'
+    +'<button id="pcDel" type="button" style="flex:0 0 auto;border:0;background:transparent;color:var(--danger);border-radius:12px;padding:8px 12px;font-size:12.5px">删除标签</button></div>';
+  box.appendChild(wrap);
+  $('#pcR').oninput=e=>{
+    const w=parseFloat(e.target.value);
+    const tk=prParse(input.value).find(x=>x.name===t.name);if(!tk)return;
+    const nw=prFmt(t.name,w);
+    input.value=input.value.slice(0,tk.segStart)+nw+input.value.slice(tk.segEnd);
+    const pos=tk.segStart+nw.length;try{input.setSelectionRange(pos,pos);}catch(err){}
+    $('#pcW').textContent=String(parseFloat(w.toFixed(2)));
+    renderPrTags();autoGrow();
+  };
+  if(im)$('#pcPrev').onclick=()=>openViewer({text:'画师小样 · '+t.name,en:'artist:'+t.name},im);
+  $('#pcSamp').onclick=()=>genSample('artist:'+t.name,t.name);
+  $('#pcSave').onclick=()=>libAdd({c:'artist',n:t.name,s:'artist:'+t.name,d:'来自提示词标签收藏'});
+  $('#pcDel').onclick=()=>{
+    const tk=prParse(input.value).find(x=>x.name===t.name);
+    closeOverlays();
+    if(!tk)return;
+    input.value=(input.value.slice(0,tk.segStart)+input.value.slice(tk.segEnd)).replace(/(\s*,\s*){2,}/g,', ').replace(/^\s*,\s*/,'').replace(/[\s,]+$/,'');
+    renderPrTags();autoGrow();
+    toast('已删除标签 '+t.name);
+  };
+}
+input.addEventListener('input',()=>{clearTimeout(prDeb);prDeb=setTimeout(renderPrTags,120);});
+input.addEventListener('scroll',()=>{const hl=$('#taHL');if(hl)hl.scrollTop=input.scrollTop;});
+function insertPrompt(str){ // 把串插进提示词输入框（我的串/配方器共用）
+  const v=input.value.trim();
+  input.value=(v?(/[,\s]$/.test(v)?v+' ':v+', '):'')+str;
+  autoGrow();renderPrTags();closeOverlays();input.focus();
+}
 function openParams(){
   openSheet('生成参数',[]);
   const box=$('#sheetItems');box.innerHTML='';
@@ -1867,7 +1990,7 @@ const ARTIST_LIB=[
   {c:'quality',n:'摄影棚',s:'studio photography, softbox lighting, 85mm lens'},
   {c:'quality',n:'胶片质感',s:'kodak portra 400, film grain, analog photo'},
 ];
-const LIB_CATS=[['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
+const LIB_CATS=[['mine','我的串'],['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
 let libTab='combo',libQ='';
 const libHas=s=>S.artists.some(a=>a.str===s);
 function libAdd(it){
@@ -1885,7 +2008,7 @@ function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包�
 }
 let bakedP=null;
 function bakeAfter(){ // 内置包就绪后刷新三处缩略图
-  try{renderLibList();renderStyleLib();renderArtists();}catch(e){}
+  try{renderLibList();renderStyleLib();renderArtists();renderPrTags();}catch(e){}
 }
 function loadBakedSamples(){ // 惰性加载内置小样包 samples.js：失败/卡死自动重试3次，成功即刷缩略图
   if(bakedP)return bakedP;
@@ -1953,7 +2076,7 @@ async function genSample(str,label){
   const ok=await genSampleCore(str,label);
   if(ok)toast('「'+label+'」小样已存，点小图可看大图');
   sampBusy=null;
-  renderLibList();renderArtists();
+  renderLibList();renderArtists();renderPrTags();
 }
 function hasBaked(k){ // 内置烘焙包里是否已有这条小样（v2清单存URL，v1存dataURL）
   const B=window.XY_SAMPLES;
@@ -2025,16 +2148,35 @@ async function exportSamples(onlyNew){ // 三通道导出：系统分享面板�
 }
 function libFiltered(){
   const q=libQ.trim().toLowerCase();
-  if(q)return ARTIST_LIB.filter(it=>(it.n+' '+it.s+' '+(it.d||'')).toLowerCase().includes(q));
+  const mine=(S.myCombos||[]).map(c=>({c:'mine',id:c.id,n:c.n,s:c.s,d:c.d||'我的自定义串'}));
+  if(q)return mine.filter(it=>(it.n+' '+it.s+' '+(it.d||'')).toLowerCase().includes(q))
+    .concat(ARTIST_LIB.filter(it=>(it.n+' '+it.s+' '+(it.d||'')).toLowerCase().includes(q)));
+  if(libTab==='mine')return mine;
   return ARTIST_LIB.filter(it=>it.c===libTab);
+}
+function openMineMenu(it){ // 我的串词条：复用 / 出样 / 删除
+  openSheet('我的串 · '+it.n,[
+    {icon:'redo',txt:'加入画师串（启用后生成自动拼）',fn:()=>libAdd(it)},
+    {icon:'copy',txt:'插入到提示词输入框',fn:()=>insertPrompt(it.s)},
+    {icon:'brush',txt:'出小样看看',fn:()=>genSample(it.s,it.n)},
+    {txt:'删除这条串',danger:true,fn:()=>{
+      S.myCombos=S.myCombos.filter(x=>x.id!==it.id);
+      store.set('xy_mycombos',S.myCombos);
+      renderLibTabs();renderLibList();
+      toast('已删除「'+it.n+'」');
+    }},
+  ]);
 }
 function renderLibList(){
   const box=$('#libList');if(!box)return;
   const list=libFiltered();
-  if(!list.length){box.innerHTML='<div class="note" style="margin:10px 2px">没搜到，换个关键词试试，比如：厚涂、逆光、特写。</div>';return;}
+  if(!list.length){box.innerHTML='<div class="note" style="margin:10px 2px">'+(libTab==='mine'?'还没有自定义串。去「画风」页用「画师串配方器」拼一条存进来。':'没搜到，换个关键词试试，比如：厚涂、逆光、特写。')+'</div>';return;}
   box.innerHTML='<div class="libwrap">'+list.map(it=>'<button class="libchip'+(libHas(it.s)?' added':'')+'" data-n="'+esc(it.n)+'">'+libChipHTML(it)+'</button>').join('')+'</div>';
   $$('#libList .libchip').forEach((b,i)=>{
-    b.onclick=()=>{const it=libFiltered()[i];if(it)libAdd(it);renderLibList();};
+    b.onclick=()=>{const it=libFiltered()[i];if(!it)return;
+      if(it.c==='mine')openMineMenu(it);
+      else{libAdd(it);renderLibList();}
+    };
     const side=b.querySelector('[data-side]');
     if(side){
       const rr=side.querySelector('.libreroll');
@@ -2052,7 +2194,7 @@ function renderLibList(){
 function renderLibTabs(){
   const box=$('#libTabs');if(!box)return;
   box.innerHTML=LIB_CATS.map(([c,label])=>{
-    const n=ARTIST_LIB.filter(it=>it.c===c).length;
+    const n=c==='mine'?(S.myCombos||[]).length:ARTIST_LIB.filter(it=>it.c===c).length;
     return '<button class="libtab'+(libTab===c&&!libQ?' on':'')+'" data-c="'+c+'">'+label+' '+n+'</button>';
   }).join('');
   $$('#libTabs .libtab').forEach(b=>{b.onclick=()=>{libTab=b.dataset.c;libQ='';$('#libSearch').value='';renderLibTabs();renderLibList();};});
@@ -2536,6 +2678,112 @@ function renderArtists(){
     box.appendChild(c);
   });
 }
+
+/* ================= 画师串配方器：词库选 + 手输 tag + 权重 → 实时拼串 → 存为我的串 ================= */
+let comboIng=[]; // 配方原料（保留上次配方）：[{n,s,w}] n=展示名 s=完整tag串 w=权重
+function prWrap(s,w){w=parseFloat(w)||1;return Math.abs(w-1)<0.01?s:'('+s+':'+String(parseFloat(w.toFixed(2)))+')';}
+function comboStr(){return comboIng.map(x=>prWrap(x.s,x.w)).join(', ');}
+function comboName(autoOnly){
+  const el=$('#clName');const v=el?el.value.trim():'';
+  if(v)return v.slice(0,20);
+  if(autoOnly)return '我的串';
+  return comboIng.length?comboIng[0].n.slice(0,16)+(comboIng.length>1?' 等'+comboIng.length+'条':''):'我的串';
+}
+function openComboLab(){
+  openSheet('画师串配方器',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:10px">从词库挑画师，或手输词库没有的 tag（自动补 artist: 前缀），每条单独调浓淡 0.8~1.4，实时拼串预览。存成「我的串」后可在词库「我的串」分类里复用、出小样。</div>'
+   +'<div class="field"><label>已选画师（<span id="clCount">0</span>）</label><div id="clList" style="display:flex;flex-direction:column;gap:6px"></div></div>'
+   +'<div class="field" style="margin-top:4px"><label>从词库添加</label><input id="clQ" placeholder="搜中文名或英文，比如：厚涂、wlop、逆光" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:12.5px;outline:none;color:var(--ink)"><div id="clRes" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:180px;overflow-y:auto"></div></div>'
+   +'<div class="field" style="margin-top:4px"><label>手输画师 tag（词库没有的）</label><div style="display:flex;gap:6px"><input id="clNew" placeholder="例：新画师名 或 artist:newguy" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:12.5px;outline:none;color:var(--ink)"><button id="clAdd" type="button" style="flex:0 0 auto;border:0;background:var(--accent);color:var(--accent-ink);border-radius:12px;padding:0 16px;font-size:12.5px;font-weight:600">添加</button></div></div>'
+   +'<div class="field" style="margin-top:4px"><label>串名称（可选）</label><input id="clName" placeholder="留空自动取名" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:12.5px;outline:none;color:var(--ink)"></div>'
+   +'<div class="field" style="margin-top:4px"><label>拼串预览（带权语法）</label><textarea id="clPrev" rows="2" readonly style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.55;outline:none;color:var(--ink);resize:none;word-break:break-all"></textarea></div>'
+   +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'
+   +'<button id="clSamp" type="button" style="flex:1;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px">出小样看看</button>'
+   +'<button id="clToArt" type="button" style="flex:1;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px">直接加入画师串</button>'
+   +'<button id="clSave" type="button" style="flex:1;border:0;background:var(--accent);color:var(--accent-ink);border-radius:12px;padding:8px 12px;font-size:12.5px;font-weight:600">存为我的串</button></div>';
+  box.appendChild(wrap);
+  renderComboLab();
+  $('#clQ').oninput=e=>renderComboRes(e.target.value);
+  renderComboRes('');
+  const addNew=()=>{
+    const v=$('#clNew').value.trim();if(!v)return toast('先输入画师 tag');
+    let s=v;
+    if(!/^artist[:：]/i.test(s)&&!/[:：([,]/.test(s))s='artist:'+s; // 没写前缀也没括号冒号 → 自动补 artist:
+    if(comboIng.some(x=>x.s.toLowerCase()===s.toLowerCase()))return toast('已添加过了');
+    comboIng.push({n:s.replace(/^artist[:：]/i,''),s:s,w:1});
+    $('#clNew').value='';
+    renderComboLab();
+  };
+  $('#clAdd').onclick=addNew;
+  $('#clNew').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addNew();}};
+  $('#clSamp').onclick=()=>{
+    const str=comboStr();if(!str)return toast('先加几条画师');
+    genSample(str,$('#clName').value.trim()||'我的串预览');
+  };
+  $('#clToArt').onclick=()=>{
+    const str=comboStr();if(!str)return toast('先加几条画师');
+    if(libHas(str)){toast('这条串已经在画师串里了');return;}
+    S.artists.unshift({id:uid(),name:comboName(true),str:str.slice(0,300),on:true});
+    persist('xy_artists',S.artists,false);renderArtists();
+    toast('已加入画师串并启用');
+  };
+  $('#clSave').onclick=()=>{
+    const str=comboStr();if(!str)return toast('先加几条画师');
+    const n=comboName();
+    S.myCombos.unshift({id:uid(),n,s:str,d:'自定义配方 · '+comboIng.length+' 条'});
+    store.set('xy_mycombos',S.myCombos);
+    try{renderLibTabs();renderLibList();}catch(err){}
+    toast('「'+n+'」已存入词库 · 我的串');
+  };
+}
+function renderComboRes(q){ // 词库搜索候选（只列画师类词条，组合串整条不适合做原料）
+  const box=$('#clRes');if(!box)return;
+  q=(q||'').trim().toLowerCase();
+  const pool=ARTIST_LIB.filter(x=>(x.c==='artist'||x.c==='male'||x.c==='unisex')&&(!q||(x.n+' '+x.s+' '+(x.d||'')).toLowerCase().includes(q))).slice(0,8);
+  if(!pool.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint)">没搜到就走下面的手输通道</div>';return;}
+  box.innerHTML='';
+  pool.forEach(x=>{
+    const b=document.createElement('button');b.type='button';
+    b.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:10px;padding:6px 8px;font-size:12px';
+    const im=libImgOf(x.s);
+    b.innerHTML=(im?'<img src="'+im+'" style="width:26px;height:26px;border-radius:8px;object-fit:cover;flex:0 0 auto">':'')
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+' · '+esc(x.s)+'</span>'
+      +(comboIng.some(i=>i.s===x.s)?'<span style="color:var(--ok);flex:0 0 auto">✓</span>':'');
+    b.onclick=()=>{
+      if(comboIng.some(i=>i.s===x.s))return toast('已添加过了');
+      comboIng.push({n:x.n,s:x.s,w:1});
+      renderComboLab();renderComboRes($('#clQ').value);
+    };
+    box.appendChild(b);
+  });
+}
+function renderComboLab(){
+  const box=$('#clList');if(!box)return;
+  $('#clCount').textContent=comboIng.length;
+  if(!comboIng.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint)">还没选画师，从词库搜或手输 tag</div>';}
+  else{
+    box.innerHTML='';
+    comboIng.forEach((x,i)=>{
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;gap:8px;align-items:center;border:1px solid var(--rule);border-radius:12px;padding:6px 8px';
+      const im=libImgOf(x.s);
+      row.innerHTML=(im?'<img src="'+im+'" style="width:30px;height:30px;border-radius:9px;object-fit:cover;flex:0 0 auto">':'<span style="width:30px;height:30px;border-radius:9px;border:1px dashed var(--rule2);flex:0 0 auto"></span>')
+        +'<span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'</span>'
+        +'<input type="range" min="0.8" max="1.4" step="0.05" value="'+x.w+'" style="flex:1.2;min-width:70px">'
+        +'<b style="font-size:11px;color:var(--muted);flex:0 0 34px;text-align:right">×'+String(parseFloat(x.w.toFixed(2)))+'</b>'
+        +'<button type="button" style="border:0;background:transparent;color:var(--danger);font-size:13px;padding:2px 4px;flex:0 0 auto">✕</button>';
+      const rg=row.querySelector('input[type=range]');
+      rg.oninput=e=>{x.w=parseFloat(e.target.value);row.querySelector('b').textContent='×'+String(parseFloat(x.w.toFixed(2)));renderComboPrev();};
+      row.querySelector('button').onclick=()=>{comboIng.splice(i,1);renderComboLab();renderComboRes($('#clQ')?$('#clQ').value:'');};
+      box.appendChild(row);
+    });
+  }
+  renderComboPrev();
+}
+function renderComboPrev(){const pv=$('#clPrev');if(pv)pv.value=comboStr();}
+$('#btnComboLab').onclick=openComboLab;
 function renderSnips(){
   const box=$('#snipList');if(!box)return;
   $('#snipCount').textContent=S.snips.length;
@@ -2911,7 +3159,7 @@ async function handleSend(){
   const text=input.value.trim();
   const hasRefs=S.refs.length>0;
   if(!text&&!hasRefs)return;
-  input.value='';autoGrow();
+  input.value='';autoGrow();renderPrTags();
   const p=activePreset();
   const lastImg=lastImageMsg();
   const wantsModify=lastImg&&/(改|换|调整|不满意|重画|再来一|重新|把.{0,12}(改成|换成))/.test(text);
@@ -3633,7 +3881,7 @@ if(splash){
 applyTheme();
 // 上次中途退出留下的生成中气泡，标记为中断
 S.msgs.forEach(m=>{if(m.kind==='progress'){m.kind='error';m.text='上次生成被中断了，重新发一次就行。';}});
-renderMsgs();renderCtx();renderStyles();renderChars();renderPresets();renderSnips();renderArtists();renderStyleLib();renderGallery();
+renderMsgs();renderCtx();renderStyles();renderChars();renderPresets();renderSnips();renderArtists();renderStyleLib();renderGallery();renderPrTags();loadBakedSamples();
 hydrateImgs(); // 把 IndexedDB 里缓存的图片补回界面
 if(S.presets.length&&!S.editingPreset)fillForm(activePreset()||S.presets[0]);
 else fillForm(null);
