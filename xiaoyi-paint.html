@@ -1601,6 +1601,29 @@ const ARTIST_LIB=[
   {c:'combo',n:'水墨机甲男',s:'artist:yoji shinkawa, artist:tetsuya nomura',d:'新川洋司+野村哲也，硬核帅'},
   {c:'combo',n:'贵族暗黑美男',s:'artist:ayami kojima, artist:takato yamamoto',d:'小岛文美+山本タカト，吸血鬼贵族'},
   {c:'combo',n:'少年漫神笔',s:'artist:takeshi obata, artist:yusuke murata',d:'小畑健+村田雄介，精致漫画感'},
+  /* ---- 复古·古早：昭和平成年间的大神，danbooru 高热度 tag，NAI 系原生认识 ---- */
+  {c:'retro',n:'昭和双美',s:'artist:haruhiko mikimoto, artist:akemi takada',d:'美树本晴彦+高田明美，80年代美少女鼻祖'},
+  {c:'retro',n:'复古未来',s:'artist:katsuhiro otomo, artist:range murata',d:'大友克洋+村田莲尔，AKIRA系复古科幻'},
+  {c:'retro',n:'平成帅哥漫',s:'artist:masakazu katsura, artist:tsukasa hojo',d:'桂正和+北条司，90年代时尚漫画脸'},
+  {c:'retro',n:'古典飘渺',s:'artist:yoshitaka amano, artist:yamada akihiro',d:'天野喜孝+山田章博，FF初代飘渺古风'},
+  {c:'retro',n:'90年代硬派帅',s:'artist:toshihiro kawamoto, artist:miura kentaro',d:'川元利浩+三浦建太郎，星际牛仔×剑风'},
+  {c:'retro',n:'大友克洋',s:'artist:katsuhiro otomo',d:'AKIRA导演，赛博朋克祖师爷，复古未来感'},
+  {c:'retro',n:'美树本晴彦',s:'artist:haruhiko mikimoto',d:'超时空要塞人设，昭和清透美少女'},
+  {c:'retro',n:'高田明美',s:'artist:akemi takada',d:'80年代美少女魔法，柔和圆润'},
+  {c:'retro',n:'安彦良和',s:'artist:yoshikazu yasuhiko',d:'高达人设鼻祖，昭和硬朗英气'},
+  {c:'retro',n:'桂正和',s:'artist:masakazu katsura',d:'I"s 作者，90年代美型恋爱漫'},
+  {c:'retro',n:'北条司',s:'artist:tsukasa hojo',d:'城市猎人作者，复古时尚大长腿'},
+  {c:'retro',n:'村田莲尔',s:'artist:range murata',d:'复古未来主义，FLCL/LAST EXILE'},
+  {c:'retro',n:'天野喜孝',s:'artist:yoshitaka amano',d:'最终幻想初代人设，古典飘渺仙气'},
+  {c:'retro',n:'寺田克也',s:'artist:katsuya terada',d:'粗犷线条复古奇幻，野性手感'},
+  {c:'retro',n:'山田章博',s:'artist:yamada akihiro',d:'复古东方奇幻，十二国记画风'},
+  {c:'retro',n:'川元利浩',s:'artist:toshihiro kawamoto',d:'星际牛仔人设，90年代硬朗帅'},
+  {c:'retro',n:'三浦建太郎',s:'artist:miura kentaro',d:'剑风传奇，暗黑古早手绘感'},
+  {c:'retro',n:'松本零士',s:'artist:leiji matsumoto',d:'70年代宇宙浪漫，银河铁道999'},
+  {c:'retro',n:'CLAMP',s:'artist:clamp',d:'90年代细长美型，圣传/魔卡少女'},
+  {c:'retro',n:'90年代画风',s:'1990s (style)',d:'非画师：直接唤起90年代赛璐璐质感'},
+  {c:'retro',n:'80年代画风',s:'1980s (style)',d:'非画师：昭和赛璐璐老动画质感'},
+  {c:'retro',n:'复古画风',s:'retro artstyle',d:'非画师：泛用复古做旧滤镜感'},
   /* ---- 人气画师：NovelAI 社区高频 artist 标签 ---- */
   {c:'artist',n:'ask',s:'artist:ask (artist)',d:'清透肌肤精致五官，NAI 神串常客'},
   {c:'artist',n:'as109',s:'artist:as109',d:'通透水润，梦幻光影'},
@@ -1795,7 +1818,7 @@ const ARTIST_LIB=[
   {c:'quality',n:'摄影棚',s:'studio photography, softbox lighting, 85mm lens'},
   {c:'quality',n:'胶片质感',s:'kodak portra 400, film grain, analog photo'},
 ];
-const LIB_CATS=[['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
+const LIB_CATS=[['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀']];
 let libTab='combo',libQ='';
 const libHas=s=>S.artists.some(a=>a.str===s);
 function libAdd(it){
