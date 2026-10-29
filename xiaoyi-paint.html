@@ -764,6 +764,7 @@ const S={
   count:store.get('xy_count',1),
   strength:store.get('xy_strength',75),
   codeMode:store.get('xy_code_mode',true),
+  codeNoImg:store.get('xy_code_noimg',true), // 纯文字锁风：参数码生效时不把画风参考图发给模型，防参考图人物形象渗入
   translate:store.get('xy_translate',true),
   snips:store.get('xy_snips',null)||[{id:uid(),text:'细腻光影，柔和阴影'},{id:uid(),text:'电影感构图，浅景深'},{id:uid(),text:'细节丰富，8k 画质，highly detailed'}],
   artists:store.get('xy_artists',null)||[
@@ -1382,6 +1383,10 @@ function openParams(){
     <label style="margin:0;flex:1">风格参数码模式<br><span style="font-size:11px;color:var(--faint)">把画风固化为一段参数随提示词传输（类似 MJ 的 --p），不带参考图的模型也能锁风格。在画风卡片里设置参数码。</span></label>
     <input type="checkbox" id="codeToggle" ${S.codeMode?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
   </div>
+  <div class="field" style="margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <label style="margin:0;flex:1">纯文字锁风（不传画风参考图）<br><span style="font-size:11px;color:var(--faint)">类似 NAI 氛围迁移的用法：画风只跟参数码文字走，画风图不发给模型，参考图里的人物形象不会跟着渗进来。想要最强锁风再关。</span></label>
+    <input type="checkbox" id="codeNoImg" ${S.codeNoImg?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
+  </div>
   <div class="field" style="margin-top:4px">
     <label>NovelAI 画质标签</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap" id="qtSeg">
@@ -1481,6 +1486,7 @@ function openParams(){
     toast('画质标签：'+({off:'关',light:'轻（基础质量词）',heavy:'重（全量画质词）',human:'人物特写'})[S.qtag]);
   });
   wrap.querySelector('#codeToggle').onchange=e=>{S.codeMode=e.target.checked;store.set('xy_code_mode',S.codeMode);toast(S.codeMode?'已开启参数码模式':'已关闭参数码模式');};
+  wrap.querySelector('#codeNoImg').onchange=e=>{S.codeNoImg=e.target.checked;store.set('xy_code_noimg',S.codeNoImg);toast(S.codeNoImg?'纯文字锁风：画风图不再发送':'已恢复发送画风参考图');};
   wrap.querySelector('#trToggle').onchange=e=>{S.translate=e.target.checked;store.set('xy_translate',S.translate);toast(S.translate?'已开启自动翻译':'已关闭自动翻译');};
 }
 $('#fileRef').onchange=async e=>{
@@ -2505,7 +2511,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   prompt=parts.filter(Boolean).join('\n');
   const QT_LV={light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
-  refs=[...styleImgs(st),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)];
+  refs=[...(S.codeMode&&st.code&&S.codeNoImg?[]:styleImgs(st)),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图
   n=Math.max(1,Math.min(4,S.count|0));
   useNeg=S.neg;useSize=S.size;useSeed=S.seed;
   }
