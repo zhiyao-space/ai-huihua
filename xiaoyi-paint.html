@@ -557,9 +557,6 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
         <button class="add-card" id="btnLib" style="margin-top:10px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21z"/><path d="M4 18.5V5.5M8 7h8M8 10.5h5"/></svg>打开完整词库（分类 + 搜索）
         </button>
-        <button class="add-card" id="btnRecipe" style="margin-top:10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg>自定义画风配方器
-        </button>
         <button class="add-card" id="btnVibe" style="margin-top:10px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18.4 5.6l-2.1 2.1M21 12h-3M7 21h10M9 18a3 3 0 1 1 6 0"/></svg>画风提炼（传参考图，AI 提炼画风提示词，不吃参考图接口）
         </button>
@@ -681,11 +678,21 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
   <div class="overlay center" id="recipeOv"><div class="modal" style="width:min(92%,440px);max-height:82%;overflow:auto;text-align:left">
     <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <h3 style="font-size:15px;margin:0 0 4px">自定义画风配方器</h3>
-    <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px">自由组合下面五个维度（可多选），拼出独一无二的画风串，存起来一键复用。</p>
-    <div id="rBody"></div>
-    <div class="rlabel" style="margin-top:12px">自由补充</div>
-    <textarea id="rExtra" rows="2" placeholder="其他氛围描述，中英文都行，比如：夏天的海边，黄昏" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical"></textarea>
-    <div class="rprev" id="rPrev">还没选，先从上面挑几个～</div>
+    <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px">不用内置模板，画风全由你说了算：中文说想法，AI 帮你写成专业画风提词；也可以直接自己写，写完当场画一张预览看效果。</p>
+    <div class="rlabel">① 画风想法（中文口语，AI 依据）</div>
+    <textarea id="rIdea" rows="2" placeholder="比如：夏天海边的清新水彩，颜色透亮，笔触松软，带点胶片感" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical"></textarea>
+    <button class="mini" id="rAI" style="margin-top:6px;width:100%">AI 帮我写画风提词</button>
+    <div class="rlabel" style="margin-top:12px">② 画风提词（发给绘画模型的，中英文都行，推荐英文）</div>
+    <textarea id="rStyle" rows="3" placeholder="AI 写完会填到这里，也可以直接自己写，比如：watercolor, soft edges, bright palette, sun-bleached tones" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical"></textarea>
+    <div class="rlabel" style="margin-top:12px">③ 预览（当场画一张看效果）</div>
+    <div style="display:flex;gap:8px;align-items:stretch;margin-top:6px">
+      <div id="rShot" style="width:88px;height:118px;border-radius:12px;border:1px dashed var(--rule2);background:var(--elev);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--faint);overflow:hidden">预览图</div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px">
+        <input id="rName" placeholder="画风名称，留空自动取" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:7px 10px;font-size:12px;outline:none;color:var(--ink)">
+        <input id="rSubj" placeholder="预览场景，留空=标准人物立绘" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:7px 10px;font-size:12px;outline:none;color:var(--ink)">
+        <button class="mini" id="rDraw" style="width:100%">画一张预览</button>
+      </div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="mini" id="rReset" style="flex:0 0 auto">重置</button>
       <button class="mini" id="rSaveArtist" style="flex:1;border-color:var(--accent);color:var(--accent)">存为画师串</button>
@@ -2586,65 +2593,84 @@ $('#modeChat').onclick=()=>setLabMode(false);
 $('#modeLab').onclick=()=>setLabMode(true);
 $('#btnLab').onclick=()=>{switchTab('chat');setLabMode(true);};
 $('#libOv').addEventListener('click',e=>{if(e.target===e.currentTarget)$('#libOv').classList.remove('show');});
-const RECIPE=[
-  ['媒介',[['水彩','watercolor'],['厚涂','impasto, thick paint'],['赛璐璐','cel shading, flat color'],['素描','sketch, graphite strokes'],['3D 渲染','3d render, octane render'],['胶片写真','film photography, kodak portra'],['像素','pixel art'],['水墨','ink wash painting']]],
-  ['线条',[['细线','clean thin lineart'],['粗线','bold outlines'],['素描线','rough sketch lines'],['无轮廓','no outlines, lineless']]],
-  ['光影',[['柔光','soft lighting'],['强对比','dramatic shadows, high contrast'],['逆光','backlighting, rim light'],['电影光','cinematic lighting, volumetric light'],['平面光','flat lighting']]],
-  ['色彩',[['高饱和','vivid colors'],['低饱和','muted colors'],['莫兰迪','morandi palette, greyish pastel'],['糖果色','candy colors'],['黑白点缀','monochrome with accent color'],['暖调','warm color scheme'],['冷调','cool color scheme']]],
-  ['质感',[['胶片颗粒','film grain'],['纸纹','paper texture'],['油画布','canvas texture'],['光斑','bokeh, glowing particles'],['做旧','vintage, worn feel']]],
-];
-let rSel={};
-function rCompose(){
-  const parts=[];
-  RECIPE.forEach(([cat])=>{(rSel[cat]||[]).forEach(idx=>parts.push(RECIPE.find(r=>r[0]===cat)[1][idx][1]));});
-  const extra=$('#rExtra').value.trim();
-  if(extra)parts.push(extra);
-  return parts.join(', ');
+/* ================= 自定义画风配方器：无内置模板，中文想法 AI 辅助写提词 + 当场画预览 ================= */
+let rBusy=false;
+function rStyleVal(){return $('#rStyle').value.trim();}
+async function apiStyleAI(p,idea){ // AI 辅助：中文想法 → 专业英文画风提词
+  if(!p.chatModel)throw new Error('未配置理解模型，去「配置」页选一个（gpt-4o-mini、gemini flash 都行）');
+  const root=apiRoot(p.baseUrl);
+  const sys='你是AI绘画画风提示词专家。用户用中文描述想要的画风（可能很口语化）。你把它扩写成专业英文画风提示词：只写画风维度——媒介类型、线条、上色方式、配色、光影、质感、氛围，用逗号分隔的英文关键词短语，15~30词；禁止人物/场景/内容词，禁止画质词（masterpiece、best quality等），不写权重符号括号。若用户提到具体主体或场景，转成对应的画风氛围词而不是内容词。输出严格 JSON，无 markdown 无解释：{"name":"中文画风名8字内","zh":"中文画风描述40字内","en":"英文画风提示词"}';
+  const r=await fetch(root+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.chatModel,messages:[{role:'user',content:sys+'\n用户描述：'+idea}],temperature:0.4,max_tokens:300})});
+  if(!r.ok){const t=await r.text().catch(()=>'');throw new Error('HTTP '+r.status+(t&&t.length<120?' '+t:''));}
+  const j=await r.json();
+  const c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+  const mm=c.match(/\{[\s\S]*\}/);
+  if(!mm)throw new Error('模型没返回画风，换个描述试试');
+  const o=JSON.parse(mm[0]);
+  return {name:String(o.name||'自定义画风').slice(0,16),zh:String(o.zh||'').slice(0,120),en:String(o.en||'').slice(0,600)};
 }
-function rRefresh(){
-  const t=rCompose();
-  $('#rPrev').textContent=t||'还没选，先从上面挑几个～';
-  $$('#rBody .rchip').forEach(c=>{
-    const cat=c.dataset.cat,idx=+c.dataset.idx;
-    c.classList.toggle('on',(rSel[cat]||[]).includes(idx));
-  });
+function rShotImg(src){ // 预览图槽：点开大图
+  const shot=$('#rShot');if(!shot)return;
+  shot.innerHTML='';shot.style.border='1px solid var(--rule)';
+  const im=document.createElement('img');im.src=src;im.style.cssText='width:100%;height:100%;object-fit:cover;cursor:zoom-in';
+  im.onclick=()=>openViewer({text:'画风预览 · '+($('#rName').value.trim()||'自定义画风'),en:rStyleVal()},src);
+  shot.appendChild(im);
 }
-$('#btnRecipe').onclick=()=>{
-  rSel={};$('#rExtra').value='';
-  const body=$('#rBody');body.innerHTML='';
-  RECIPE.forEach(([cat,tags])=>{
-    const lab=document.createElement('div');lab.className='rlabel';lab.textContent=cat;
-    const wrap=document.createElement('div');wrap.className='rchips';
-    tags.forEach(([cn,en],idx)=>{
-      const c=document.createElement('button');c.className='rchip';c.textContent=cn;c.dataset.cat=cat;c.dataset.idx=idx;
-      c.onclick=()=>{
-        const arr=rSel[cat]||(rSel[cat]=[]);
-        const at=arr.indexOf(idx);
-        if(at>=0)arr.splice(at,1);else arr.push(idx);
-        rRefresh();
-      };
-      wrap.appendChild(c);
-    });
-    body.appendChild(lab);body.appendChild(wrap);
-  });
-  rRefresh();
-  ovOpen();$('#recipeOv').classList.add('show');
+function rShotReset(){
+  const shot=$('#rShot');if(!shot)return;
+  shot.innerHTML='预览图';shot.style.border='1px dashed var(--rule2)';
+}
+function openRecipe(){ovOpen();$('#recipeOv').classList.add('show');} // 草稿在会话内保留，关了再开还在
+$('#rAI').onclick=async()=>{
+  const idea=$('#rIdea').value.trim();
+  if(!idea)return toast('先用中文说说你想要的画风');
+  if(rBusy)return toast('AI 写作中，稍等');
+  const p=activePreset();
+  const b=$('#rAI');rBusy=true;const old=b.textContent;b.textContent='AI 写作中…';b.disabled=true;
+  try{
+    const o=await apiStyleAI(p,idea);
+    $('#rStyle').value=o.en;
+    if(!$('#rName').value.trim())$('#rName').value=o.name;
+    toast('写好了：'+o.zh);
+  }catch(e){toast('AI 写作失败：'+String(e&&e.message||e).slice(0,60));}
+  b.textContent=old;b.disabled=false;rBusy=false;
 };
-$('#rReset').onclick=()=>{rSel={};$('#rExtra').value='';rRefresh();};
+$('#rDraw').onclick=async()=>{
+  if(rBusy)return toast('预览生成中，稍等');
+  const style=rStyleVal();if(!style)return toast('先写画风提词（或让 AI 帮写）');
+  const p=activePreset();
+  if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  const isNaiS=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+  const QT=isNaiS?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
+  const subj=$('#rSubj').value.trim()||((S.sampSubj==='boy'?'1boy, solo':'1girl, solo')+', upper body, looking at viewer, detailed background, cinematic lighting, depth of field');
+  const shot=$('#rShot');
+  rBusy=true;shot.innerHTML='<div class="skel" style="height:100%;margin:0"></div>';shot.style.border='0';
+  try{
+    const src=await apiGenerate(p,{prompt:style+', '+subj+', '+QT,size:isNaiS?'832x1216':'512x512',neg:isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG});
+    if(!src)throw new Error('接口没返回图片');
+    rShotImg(src);
+    toast('预览好了，点图看大图');
+  }catch(e){
+    shot.innerHTML='<span style="font-size:10px;color:var(--danger);padding:6px;text-align:center">预览失败</span>';shot.style.border='1px dashed var(--rule2)';
+    toast('预览失败：'+String(e&&e.message||e).slice(0,60));
+  }
+  rBusy=false;
+};
+$('#rReset').onclick=()=>{
+  $('#rIdea').value='';$('#rStyle').value='';$('#rName').value='';$('#rSubj').value='';
+  rShotReset();toast('已重置');
+};
 $('#rToInput').onclick=()=>{
-  const t=rCompose();
-  if(!t){toast('先挑几个维度再拼');return;}
+  const t=rStyleVal();if(!t){toast('先写画风提词');return;}
   const input=$('#input');
   input.value+=(input.value?'，':'')+t;autoGrow();closeOverlays();input.focus();
 };
 $('#rSaveArtist').onclick=()=>{
-  const t=rCompose();
-  if(!t){toast('先挑几个维度再存');return;}
-  const name=prompt('给这套画风起个名字：','我的自定义画风');
-  if(!name)return;
-  S.artists.unshift({id:uid(),name:(name.trim()||'自定义画风').slice(0,20),str:t.slice(0,300),on:true});
+  const t=rStyleVal();if(!t){toast('先写画风提词');return;}
+  const n=($('#rName').value.trim()||'自定义画风').slice(0,20);
+  S.artists.unshift({id:uid(),name:n,str:t.slice(0,300),on:true});
   persist('xy_artists',S.artists,false);renderArtists();closeOverlays();
-  toast('已存为画师串并启用');
+  toast('「'+n+'」已存为画师串并启用');
 };
 
 /* ================= 常用提词片段 ================= */
@@ -2888,6 +2914,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'copy',txt:'上传参考图（最多 3 张）',fn:()=>$('#fileRef').click()},
     {icon:'quote',txt:'插入常用提词片段',fn:openSnips},
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
+    {icon:'brush',txt:'自定义画风配方器（AI 辅助写画风）',fn:openRecipe},
     {icon:'undo',txt:'生成参数（尺寸/张数/强度/Seed/负面词）',fn:openParams},
     {icon:'redo',txt:'人物一致套装（锁长相类型）',fn:openFace},
     {icon:'quote',txt:'通配符词表（__随机换词__）',fn:openWilds},
