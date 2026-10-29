@@ -778,6 +778,10 @@ const S={
   seed:store.get('xy_seed',''), // 空=随机；填固定值=同提示词稳定重roll
   codeWeight:store.get('xy_codeweight',1.2), // 参数码强度
   raw:store.get('xy_raw',false), // 无限制模式：不追加兜底词，提示词原样直传
+  faceLock:store.get('xy_facelock',false), // 人物一致套装：长相类型锁定开关
+  faceType:store.get('xy_facetype',''), // 五官长相类型描述（中文，随主提示词一起翻译）
+  faceRef:store.get('xy_faceref',''), // 长相参考图 dataURL（512px 压缩存储）
+  faceW:store.get('xy_facew',65), // 长相参考图影响强度（%）
   labMsgs:store.get('xy_labmsgs',[]), // 画风实验的配方记录（不含图片）
   sessions:store.get('xy_sessions',[]), // 归档的对话会话
   labSessions:store.get('xy_labsessions',[]), // 归档的实验会话
@@ -2358,11 +2362,84 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'插入常用提词片段',fn:openSnips},
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
     {icon:'undo',txt:'生成参数（尺寸/张数/强度/Seed/负面词）',fn:openParams},
+    {icon:'redo',txt:'人物一致套装（锁长相类型）',fn:openFace},
     {icon:'redo',txt:'批量抽卡（变量轮换出整套）',fn:openBatch},
     {icon:'dice',txt:'随机灵感（摇一下直接画）',fn:rollDice},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
   ]);
 };
+
+/* ================= 人物一致套装：长相参考图 + 五官类型描述 + Seed 聚合一键生效 ================= */
+function openFace(){
+  openSheet('人物一致套装（锁长相类型）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">参考图 + 五官描述 + Seed 三件一起上，把长相稳定到「类型级一致」——同一类脸，不是证件照级。日常只管输入场景和动作，不用再翻设置。</div>
+  <div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <label style="margin:0;flex:1">人物一致模式<br><span style="font-size:11px;color:var(--faint)">开启后每次生成自动带上长相描述与参考图；Seed 没填会在下次出图时自动抽一个锁住</span></label>
+    <input type="checkbox" id="faceToggle" ${S.faceLock?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>五官长相类型（中文就行，写「形状」不写「气质」）</label>
+    <textarea id="faceType" rows="2" placeholder="例：圆脸、杏眼、单眼皮、小嘴、鼻梁挺。写具体形状词才锁得住，写「好看的」没用" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(S.faceType)}</textarea>
+    <div style="font-size:11.5px;color:var(--muted)">这段随提示词自动翻译。换人时改这里即可。</div>
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>长相参考图（可选，垫一张脸当「类型模板」）</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="faceUp" type="button" style="flex:0 0 auto;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 14px;font-size:12.5px">${S.faceRef?'换一张':'选图'}</button>
+      ${S.faceRef?`<img src="${S.faceRef}" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--rule)"><button id="faceDel" type="button" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:12px;padding:8px 12px;font-size:12px">移除</button>`:'<span style="font-size:11.5px;color:var(--faint)">没选：只用文字描述锁</span>'}
+    </div>
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>参考影响强度 <span id="faceWVal" style="color:var(--ink);font-weight:600">${S.faceW}%</span></label>
+    <input type="range" id="faceWRange" min="20" max="95" step="5" value="${S.faceW}" style="width:100%">
+    <div style="font-size:11.5px;color:var(--muted)">类型级一致推荐 55~70：太高连姿势构图都抄参考图，太低只剩氛围。</div>
+  </div>
+  <div class="field" style="margin-top:4px">
+    <label>Seed 锁定</label>
+    <div style="display:flex;gap:8px">
+      <input id="faceSeed" value="${esc(S.seed)}" inputmode="numeric" placeholder="空 = 开启套装后自动抽一个锁住" style="flex:1;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);min-width:0">
+      <button id="faceSeedR" type="button" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:12px;padding:8px 14px;font-size:12.5px">换一个</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted)">同 Seed + 同人物描述 = 稳定同款脸，微调场景时别动它；想换脸就「换一个」。</div>
+  </div>
+  <button id="faceApply" type="button" style="width:100%;margin-top:10px;border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px;font-size:13.5px;font-weight:600">一键生效并关闭</button>`;
+  box.appendChild(wrap);
+  const ft=wrap.querySelector('#faceType');
+  ft.oninput=()=>{S.faceType=ft.value.slice(0,200);store.set('xy_facetype',S.faceType);};
+  wrap.querySelector('#faceToggle').onchange=e=>{
+    S.faceLock=e.target.checked;store.set('xy_facelock',S.faceLock);
+    toast(S.faceLock?((S.faceType||S.faceRef)?'人物一致已开启':'已开启，记得填五官描述或选张参考图'):'人物一致已关闭');
+  };
+  wrap.querySelector('#faceUp').onclick=()=>{
+    const fi=document.createElement('input');fi.type='file';fi.accept='image/*';
+    fi.onchange=async()=>{
+      const f=fi.files&&fi.files[0];if(!f)return;
+      const d=await fileToDataURL(f,512);
+      if(!d)return toast('图片没读出来，换一张试试');
+      S.faceRef=d;store.set('xy_faceref',d);
+      openFace();toast('长相参考图已设置');
+    };
+    fi.click();
+  };
+  const fdel=wrap.querySelector('#faceDel');
+  if(fdel)fdel.onclick=()=>{S.faceRef='';store.set('xy_faceref','');openFace();toast('长相参考图已移除');};
+  const fwr=wrap.querySelector('#faceWRange');
+  fwr.oninput=()=>{S.faceW=+fwr.value;store.set('xy_facew',S.faceW);wrap.querySelector('#faceWVal').textContent=S.faceW+'%';};
+  const fsd=wrap.querySelector('#faceSeed');
+  fsd.oninput=()=>{S.seed=fsd.value.trim().slice(0,18);store.set('xy_seed',S.seed);};
+  wrap.querySelector('#faceSeedR').onclick=()=>{
+    const v=String((Math.random()*4294967295)|0);
+    fsd.value=v;S.seed=v;store.set('xy_seed',v);toast('新 Seed：'+v);
+  };
+  wrap.querySelector('#faceApply').onclick=()=>{
+    if(S.faceLock&&!S.faceType&&!S.faceRef)return toast('先填五官描述或选张参考图，不然锁不住');
+    if(S.faceLock&&!S.seed){S.seed=String((Math.random()*4294967295)|0);store.set('xy_seed',S.seed);}
+    closeOverlays();
+    toast(S.faceLock?'人物一致生效中 · Seed '+(S.seed||'随机'):'已保存（模式未开启）');
+  };
+}
 
 /* ================= 批量抽卡：主体描述 + 变量行轮换，逐张串行出整套 ================= */
 function openBatch(){
@@ -2521,6 +2598,11 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     if(S.codeMode&&st.code)parts.push('风格参数码（'+cw+'这段画风特征，权重 '+S.codeWeight.toFixed(2)+'）：'+st.code);
   }
   if(cs.length)parts.push('角色形象锁定：'+cs.map(c=>'「'+c.name+'」').join('、')+'严格参考所附角色形象图，保持长相、发型、服饰特征一致。');
+  if(S.faceLock&&!S.seed){S.seed=String((Math.random()*4294967295)|0);store.set('xy_seed',S.seed);toast('人物一致：Seed 已锁定 '+S.seed);} // 套装开启时首次自动抽一个 Seed 锁住，保证同款脸延续
+  if(S.faceLock&&S.faceType){
+    const fw=S.faceW>=80?'严格参考所附长相参考图':S.faceW>=50?'重点参考所附长相参考图':'仅借鉴所附长相参考图的长相气质';
+    parts.push('人物长相类型锁定：'+fw+'，五官长相保持「'+S.faceType+'」的类型特征，不同场景、动作与角度下长相类型保持一致。');
+  }
   const artsOn=S.artists.filter(a=>a.on&&a.str);
   if(artsOn.length)parts.push(artsOn.map(a=>{ // 画师权重：>1 用 {} 加权（每0.25一层，最多4层），<1 用 [] 减权
     const w=S.artistsW[a.id]??1;
@@ -2531,7 +2613,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   prompt=parts.filter(Boolean).join('\n');
   const QT_LV={light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
-  refs=[...(S.codeMode&&st.code&&S.codeNoImg?[]:styleImgs(st)),...cs.map(c=>c.img),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图
+  refs=[...(S.codeMode&&st.code&&S.codeNoImg?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上
   n=Math.max(1,Math.min(4,S.count|0));
   useNeg=S.neg;useSize=S.size;useSeed=S.seed;
   }
