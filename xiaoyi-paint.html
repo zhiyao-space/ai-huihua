@@ -889,8 +889,9 @@ async function hydrateImgs(){ // 启动时把 IndexedDB 里的图片补回内存
       if(ch){s.imgs=a;dirty=true;}}
   }
   for(const c of S.chars){await one(c,'c');}
-  for(const k in S.libimg){ // 词库小样图补回
+  for(const k in S.libimg){ // 词库小样图补回（历史脏数据：无图的空壳顺手清掉）
     const o=S.libimg[k];
+    if(!o||!o.img){delete S.libimg[k];dirty=true;continue;}
     if(isRef(o.img)){const v=await fix(o.img.slice(5));if(v){o.img=v;dirty=true;}else{delete S.libimg[k];dirty=true;}}
   }
   for(const s of [...S.sessions,...S.labSessions]){ // 归档会话图片补回
@@ -1844,8 +1845,9 @@ async function genSampleCore(str,label){ // 生成+存储主体，单个与批�
   const prompt=str+', '+subj+', '+QT;
   const neg=isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG;
   try{
-    const r=await apiGenerate(p,{prompt,size:isNaiS?'832x1216':'512x512',neg:neg});
-    S.libimg[str]={img:r.src,ts:Date.now()};
+    const src=await apiGenerate(p,{prompt,size:isNaiS?'832x1216':'512x512',neg:neg}); // 本版 apiGenerate 返回裸 src 字符串
+    if(!src){toast('「'+label+'」小样失败：接口没返回图片');return false;}
+    S.libimg[str]={img:src,ts:Date.now()};
     await persistLibImg();
     return true;
   }catch(e){
@@ -1866,7 +1868,7 @@ async function batchSamples(){ // 批量出小样：只补当前分类里还没�
   if(batchRun){batchRun=false;toast('正在收尾，本轮结束后停止');return;}
   const p=activePreset();
   if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
-  const list=libFiltered().filter(it=>!S.libimg[it.s]);
+  const list=libFiltered().filter(it=>!(S.libimg[it.s]&&S.libimg[it.s].img));
   if(!list.length)return toast('当前分类的小样都齐了；重roll某一张用小图右下的↻');
   batchRun=true;
   const btn=$('#btnBatch');
@@ -1899,7 +1901,7 @@ function shrinkImg(src,px,q){ // 导出前压缩：canvas 缩到 px 长边转 JP
   });
 }
 async function exportSamples(){ // 导出小样包 JSON，发给 Trae 烘焙成 samples.js 内置进仓库，全用户可见
-  const keys=Object.keys(S.libimg);
+  const keys=Object.keys(S.libimg).filter(k=>S.libimg[k]&&S.libimg[k].img);
   if(!keys.length)return toast('还没有本地小样，先「批量出小样」几张');
   toast('正在压缩打包 '+keys.length+' 张，稍等…');
   const imgs={};
