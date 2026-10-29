@@ -223,6 +223,8 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .libchip .libtxt em{display:block; font-style:normal; font-size:10px; color:var(--faint); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .libchip.added{opacity:.5; border-style:dashed;}
 .libthumb{width:46px; height:46px; border-radius:10px; object-fit:cover; display:block;}
+.libside{position:relative; display:inline-block;}
+.libreroll{position:absolute; right:-5px; bottom:-5px; width:19px; height:19px; border-radius:50%; background:var(--elev); border:1px solid var(--rule2); color:var(--muted); font-size:11px; line-height:17px; text-align:center; z-index:2;}
 .libthumb.empty{display:flex; align-items:center; justify-content:center; border:1px dashed var(--rule2); color:var(--faint); font-size:10px; background:var(--elev);}
 .libthumb.empty:active{background:var(--hover);}
 .card .libthumb{width:40px; height:40px;}
@@ -678,7 +680,9 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <span style="font-size:11.5px;color:var(--muted)">小样主题</span>
       <button class="mtab" data-ss="girl">少女立绘</button>
       <button class="mtab" data-ss="boy">男生立绘</button>
-      <span style="font-size:10.5px;color:var(--faint)">点词条左侧「出小样」，用你的模型试画一张存下来</span>
+      <button class="mtab" id="btnBatch">批量出小样</button>
+      <button class="mtab" id="btnExportSamp">导出小样包</button>
+      <span style="font-size:10.5px;color:var(--faint)">批量只补当前分类缺的；小图右下↻重出一张</span>
     </div>
     <div id="libTabs" style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;flex:0 0 auto"></div>
     <div id="libList" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
@@ -1799,39 +1803,109 @@ function libAdd(it){
   persist('xy_artists',S.artists,false);renderArtists();
   toast('「'+it.n+'」已加入画师串并启用');
 }
+function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（全用户可见）
+  const e=S.libimg[str];
+  if(e)return e.img;
+  return (window.XY_SAMPLES&&XY_SAMPLES[str])||null;
+}
+let bakedP=null;
+function loadBakedSamples(){ // 惰性加载内置小样包 samples.js（文件缺失或为空时静默跳过）
+  if(bakedP)return bakedP;
+  bakedP=new Promise(res=>{
+    if(window.XY_SAMPLES)return res();
+    const s=document.createElement('script');s.src='samples.js?v=1';
+    s.onload=res;s.onerror=res;document.head.appendChild(s);
+    setTimeout(res,5000);
+  });
+  return bakedP;
+}
 function libChipHTML(it){
   const added=libHas(it.s);
-  const sm=S.libimg[it.s];
+  const sm=libImgOf(it.s);
   const thumb=sm
-    ?'<img class="libthumb" src="'+sm.img+'" alt="">'
+    ?'<img class="libthumb" src="'+sm+'" alt=""><span class="libreroll" data-k="'+esc(it.s)+'" title="重出一张">↻</span>'
     :'<span class="libthumb empty sampbtn" data-k="'+esc(it.s)+'">出小样</span>';
   return '<span class="libside" data-side="1">'+thumb+'</span>'
     +'<span class="libtxt"><b>'+esc(it.n)+(added?' · 已加入':'')+'</b><span>'+esc(it.s)+'</span>'+(it.d?'<em>'+esc(it.d)+'</em>':'')+'</span>';
 }
 /* ================= 词库真实小样：用你自己的模型出一张统一测试图，所见即所得 ================= */
 let sampBusy=null; // 正在出小样的串内容
+let batchRun=false; // 批量出小样进行中
 const SAMP_NEG='lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, extra digits, bad hands, blurry';
 function sampSetBtns(str,txt,dis){ // 词库/画师串两处同串小样按钮一起变状态
   $$('.sampbtn').forEach(b=>{if(b.dataset.k===str){b.textContent=txt;b.disabled=!!dis;}});
 }
-async function genSample(str,label){
-  if(sampBusy)return toast('等当前小样出完再点');
+async function genSampleCore(str,label){ // 生成+存储主体，单个与批量共用
   const p=activePreset();
-  if(!p||!p.model)return toast('先去「配置」页选好绘画模型再出小样');
-  sampBusy=str;
-  sampSetBtns(str,'出图中…',true);
+  if(!p||!p.model){toast('先去「配置」页选好绘画模型再出小样');return false;}
   const subj=S.sampSubj==='boy'?'1boy, solo, portrait, simple background':'1girl, solo, portrait, simple background';
   const prompt=str+', '+subj+', best quality, amazing quality, very aesthetic, absurdres';
   try{
-    const src=await apiGenerate(p,{prompt,size:'512x512',neg:SAMP_NEG});
-    S.libimg[str]={img:src,ts:Date.now()};
+    const r=await apiGenerate(p,{prompt,size:'512x512',neg:SAMP_NEG});
+    S.libimg[str]={img:r.src,ts:Date.now()};
     await persistLibImg();
-    toast('「'+label+'」小样已存，点小图可看大图');
+    return true;
   }catch(e){
-    toast('小样失败：'+String(e&&e.message||e).slice(0,80));
+    toast('「'+label+'」小样失败：'+String(e&&e.message||e).slice(0,60));
+    return false;
   }
+}
+async function genSample(str,label){
+  if(sampBusy||batchRun)return toast('等当前小样出完再点');
+  sampBusy=str;
+  sampSetBtns(str,'出图中…',true);
+  const ok=await genSampleCore(str,label);
+  if(ok)toast('「'+label+'」小样已存，点小图可看大图');
   sampBusy=null;
   renderLibList();renderArtists();
+}
+async function batchSamples(){ // 批量出小样：只补当前分类里还没有小样的词条，进行中再点一次=停止
+  if(batchRun){batchRun=false;toast('正在收尾，本轮结束后停止');return;}
+  const p=activePreset();
+  if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  const list=libFiltered().filter(it=>!S.libimg[it.s]);
+  if(!list.length)return toast('当前分类的小样都齐了；重roll某一张用小图右下的↻');
+  batchRun=true;
+  const btn=$('#btnBatch');
+  let done=0,ok=0,stopped=false;
+  for(const it of list){
+    if(!batchRun){stopped=true;break;}
+    done++;
+    if(btn)btn.textContent='停止 '+done+'/'+list.length;
+    if(await genSampleCore(it.s,it.n))ok++;
+    renderLibList();renderArtists();
+  }
+  batchRun=false;
+  if(btn)btn.textContent='批量出小样';
+  toast('批量结束：成功 '+ok+'/'+(stopped?done:list.length)+' 张'+(stopped?'（已手动停止，再点继续）':''));
+}
+function shrinkImg(src,px,q){ // 导出前压缩：canvas 缩到 px 长边转 JPEG，失败时回退原图
+  return new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>{
+      try{
+        const c=document.createElement('canvas');
+        const r=Math.min(1,px/Math.max(im.width,im.height));
+        c.width=Math.max(1,Math.round(im.width*r));c.height=Math.max(1,Math.round(im.height*r));
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+        res(c.toDataURL('image/jpeg',q));
+      }catch(e){res(src);}
+    };
+    im.onerror=()=>res(src);
+    im.src=src;
+  });
+}
+async function exportSamples(){ // 导出小样包 JSON，发给 Trae 烘焙成 samples.js 内置进仓库，全用户可见
+  const keys=Object.keys(S.libimg);
+  if(!keys.length)return toast('还没有本地小样，先「批量出小样」几张');
+  toast('正在压缩打包 '+keys.length+' 张，稍等…');
+  const imgs={};
+  for(const k of keys)imgs[k]=await shrinkImg(S.libimg[k].img,384,.82);
+  const json=JSON.stringify({v:1,imgs:imgs});
+  openTextOv('小样包已生成 · 发给 Trae 内置进项目（'+keys.length+' 条）',json,{extra:[
+    {label:'下载 .json',fn:()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download='artist-samples.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);}},
+    {label:'复制',fn:async()=>{try{await navigator.clipboard.writeText(json);toast('已复制');}catch(e){toast('复制失败，长按文本框全选复制');}}}
+  ]});
 }
 function libFiltered(){
   const q=libQ.trim().toLowerCase();
@@ -1846,13 +1920,17 @@ function renderLibList(){
   $$('#libList .libchip').forEach((b,i)=>{
     b.onclick=()=>{const it=libFiltered()[i];if(it)libAdd(it);renderLibList();};
     const side=b.querySelector('[data-side]');
-    if(side)side.onclick=e=>{ // 点小图区：没图出小样，有图看大图
-      e.stopPropagation();
-      const it=libFiltered()[i];if(!it)return;
-      const sm=S.libimg[it.s];
-      if(sm)openViewer({text:'画师小样 · '+it.n,en:it.s},sm.img);
-      else genSample(it.s,it.n);
-    };
+    if(side){
+      const rr=side.querySelector('.libreroll');
+      if(rr)rr.onclick=e=>{e.stopPropagation();const it=libFiltered()[i];if(it)genSample(it.s,it.n);};
+      side.onclick=e=>{ // 点小图区：没图出小样，有图看大图（↻ 角标除外）
+        e.stopPropagation();
+        const it=libFiltered()[i];if(!it)return;
+        const sm=libImgOf(it.s);
+        if(sm)openViewer({text:'画师小样 · '+it.n,en:it.s},sm);
+        else genSample(it.s,it.n);
+      };
+    }
   });
 }
 function renderLibTabs(){
@@ -1870,6 +1948,8 @@ function renderStyleLib(){
   ARTIST_LIB.filter(it=>it.c==='combo').slice(0,4).forEach(it=>{
     const b=document.createElement('button');b.className='libchip';
     b.innerHTML=libChipHTML(it);
+    const rr=b.querySelector('.libreroll');
+    if(rr)rr.onclick=e=>{e.stopPropagation();genSample(it.s,it.n);}; // 画风页推荐词条：↻ 只重roll，不触发加入
     b.onclick=()=>libAdd(it);
     box.appendChild(b);
   });
@@ -1882,6 +1962,9 @@ $$('#libOv [data-ss]').forEach(b=>b.onclick=()=>{
   renderSampSubj();
   toast('小样主题已切换：'+(S.sampSubj==='boy'?'男生立绘':'少女立绘'));
 });
+$('#btnBatch').onclick=batchSamples;
+$('#btnExportSamp').onclick=exportSamples;
+setTimeout(()=>{loadBakedSamples().then(()=>{renderLibList();renderStyleLib();renderArtists();});},1500); // 开机闲时加载内置小样包，加载完刷一遍缩略图
 $('#btnLib').onclick=()=>{
   $('#libSearch').value='';libQ='';libTab='combo';
   renderSampSubj();
@@ -2303,17 +2386,17 @@ function renderArtists(){
   box.innerHTML='';
   S.artists.forEach(a=>{
     const c=document.createElement('div');c.className='card';
-    const sm=S.libimg[a.str];
+    const sm=libImgOf(a.str);
     const thumb=sm
-      ?'<img class="libthumb" src="'+sm.img+'" alt="">'
+      ?'<img class="libthumb" src="'+sm+'" alt="">'
       :'<span class="libthumb empty sampbtn" data-k="'+esc(a.str)+'">出小样</span>';
     c.innerHTML=`<div class="row"><span class="libside" data-side="1">${thumb}</span><div class="grow" style="min-width:0"><div class="nm" style="font-size:13px">${esc(a.name||'')}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.str)}</div></div>
       <input type="checkbox" ${a.on?'checked':''} style="width:20px;height:20px;accent-color:var(--accent);flex:0 0 auto"></div>
       <div class="acts"><button class="mini" data-a="edit">编辑</button><button class="mini sampbtn" data-a="samp" data-k="${esc(a.str)}">出小样</button><button class="mini danger" data-a="del">删除</button></div>`;
     const side=c.querySelector('[data-side]');
     side.onclick=()=>{
-      const cur=S.libimg[a.str];
-      if(cur)openViewer({text:'画师小样 · '+(a.name||'自定义串'),en:a.str},cur.img);
+      const cur=libImgOf(a.str);
+      if(cur)openViewer({text:'画师小样 · '+(a.name||'自定义串'),en:a.str},cur);
       else genSample(a.str,a.name||'自定义串');
     };
     c.querySelector('[data-a=samp]').onclick=()=>genSample(a.str,a.name||'自定义串');
