@@ -1900,17 +1900,18 @@ function shrinkImg(src,px,q){ // 导出前压缩：canvas 缩到 px 长边转 JP
     im.src=src;
   });
 }
-async function exportSamples(){ // 导出小样包 JSON，发给 Trae 烘焙成 samples.js 内置进仓库，全用户可见
+async function exportSamples(){ // 一键下载小样包 JSON，把文件发到 Trae 聊天里即可烘焙内置（不走大文本弹层，防手机卡死）
   const keys=Object.keys(S.libimg).filter(k=>S.libimg[k]&&S.libimg[k].img);
   if(!keys.length)return toast('还没有本地小样，先「批量出小样」几张');
   toast('正在压缩打包 '+keys.length+' 张，稍等…');
   const imgs={};
   for(const k of keys)imgs[k]=await shrinkImg(S.libimg[k].img,384,.82);
   const json=JSON.stringify({v:1,imgs:imgs});
-  openTextOv('小样包已生成 · 发给 Trae 内置进项目（'+keys.length+' 条）',json,{extra:[
-    {label:'下载 .json',fn:()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download='artist-samples.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),3000);}},
-    {label:'复制',fn:async()=>{try{await navigator.clipboard.writeText(json);toast('已复制');}catch(e){toast('复制失败，长按文本框全选复制');}}}
-  ]});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+  a.download='artist-samples.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  toast('小样包已下载（'+keys.length+' 条）· 把文件发进 Trae 聊天就完成内置');
 }
 function libFiltered(){
   const q=libQ.trim().toLowerCase();
