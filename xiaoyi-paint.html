@@ -1350,6 +1350,7 @@ function openParams(){
     <label>负面提示词</label>
     <textarea id="negText" rows="2" placeholder="不想出现的东西，如：lowres, bad anatomy, blurry。留空不发送；个别模型不支持该参数，报错就清空" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(S.neg)}</textarea>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <button id="negTr" type="button" style="border:0;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:600">中→英</button>
       <button data-neg="fix" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">防崩</button>
       <button data-neg="hands" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">手部修正</button>
       <button data-neg="style" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">画风排除</button>
@@ -1424,6 +1425,20 @@ function openParams(){
     nt.value=val.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
     toast(k==='fix'?'已追加防崩负面词':k==='hands'?'已追加手部修正词':'已追加画风排除词');
   });
+  wrap.querySelector('#negTr').onclick=async()=>{ // 中文负面词翻成英文（负面词不过主翻译管线，这里手动转）
+    const v=nt.value.trim();
+    if(!v)return toast('负面词是空的');
+    if(!/[\u4e00-\u9fff]/.test(v))return toast('没有中文，不用翻');
+    const p=activePreset();
+    if(!p||!p.baseUrl||!p.model)return toast('先去「配置」页把 API 配好');
+    toast('翻译中…');
+    try{
+      const en=await translatePrompt(p,v,true);
+      if(!en||en===v)return toast('没翻出来，重试一次');
+      nt.value=en.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
+      toast('负面词已翻成英文');
+    }catch(e){toast('翻译失败，稍后再试');}
+  };
   const seedInp=wrap.querySelector('#seedText');
   seedInp.oninput=()=>{S.seed=seedInp.value.trim().slice(0,18);store.set('xy_seed',S.seed);};
   wrap.querySelector('#seedRand').onclick=()=>{seedInp.value='';S.seed='';store.set('xy_seed',S.seed);toast('已切回随机种子');};
