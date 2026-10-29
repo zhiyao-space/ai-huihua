@@ -782,6 +782,9 @@ const S={
   faceType:store.get('xy_facetype',''), // 五官长相类型描述（中文，随主提示词一起翻译）
   faceRef:store.get('xy_faceref',''), // 长相参考图 dataURL（512px 压缩存储）
   faceW:store.get('xy_facew',65), // 长相参考图影响强度（%）
+  faceCards:store.get('xy_facecards',null)||[], // 角色卡库：[{id,name,face,img,costume}]
+  faceActive:store.get('xy_faceactive',''), // 当前启用的角色卡 id（仅做标记）
+  wilds:store.get('xy_wilds',null)||{发型:['长发','短发','双马尾','丸子头','波浪卷','高马尾']}, // 通配符词表：名字→候选数组
   labMsgs:store.get('xy_labmsgs',[]), // 画风实验的配方记录（不含图片）
   sessions:store.get('xy_sessions',[]), // 归档的对话会话
   labSessions:store.get('xy_labsessions',[]), // 归档的实验会话
@@ -2363,6 +2366,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
     {icon:'undo',txt:'生成参数（尺寸/张数/强度/Seed/负面词）',fn:openParams},
     {icon:'redo',txt:'人物一致套装（锁长相类型）',fn:openFace},
+    {icon:'quote',txt:'通配符词表（__随机换词__）',fn:openWilds},
     {icon:'redo',txt:'批量抽卡（变量轮换出整套）',fn:openBatch},
     {icon:'dice',txt:'随机灵感（摇一下直接画）',fn:rollDice},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
@@ -2375,6 +2379,15 @@ function openFace(){
   const box=$('#sheetItems');box.innerHTML='';
   const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
   wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">参考图 + 五官描述 + Seed 三件一起上，把长相稳定到「类型级一致」——同一类脸，不是证件照级。日常只管输入场景和动作，不用再翻设置。</div>
+  <div class="field">
+    <label>角色卡库（点卡秒换人）</label>
+    <div id="cardList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <button id="cardSave" type="button" style="flex:1;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12px">把当前配置存为角色卡</button>
+      <button id="cardNew" type="button" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:12px;padding:8px 12px;font-size:12px">新建空卡</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted)">启用=把卡的五官/参考图写进下面并自动开启模式。每个角色存一张卡，换主角点一下就行。</div>
+  </div>
   <div class="field" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
     <label style="margin:0;flex:1">人物一致模式<br><span style="font-size:11px;color:var(--faint)">开启后每次生成自动带上长相描述与参考图；Seed 没填会在下次出图时自动抽一个锁住</span></label>
     <input type="checkbox" id="faceToggle" ${S.faceLock?'checked':''} style="width:21px;height:21px;accent-color:var(--accent);flex:0 0 auto">
@@ -2406,6 +2419,48 @@ function openFace(){
   </div>
   <button id="faceApply" type="button" style="width:100%;margin-top:10px;border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px;font-size:13.5px;font-weight:600">一键生效并关闭</button>`;
   box.appendChild(wrap);
+  const cbox=wrap.querySelector('#cardList');
+  const renderCards=()=>{ // 角色卡列表：点=启用，✎=编辑，†=删除
+    cbox.innerHTML=S.faceCards.map(c=>`<div style="display:flex;gap:6px;align-items:center">
+      <button data-card="${esc(c.id)}" style="flex:1;text-align:left;border:1px solid ${c.id===S.faceActive?'var(--accent)':'var(--rule)'};background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.id===S.faceActive?'● ':''}${esc(c.name)}${c.face?' · '+esc(c.face.slice(0,16)):''}</button>
+      <button data-cedit="${esc(c.id)}" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:10px;padding:6px 10px;font-size:12px">✎</button>
+      <button data-cdel="${esc(c.id)}" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:10px;padding:6px 10px;font-size:12px">†</button>
+    </div>`).join('')||'<div style="font-size:11.5px;color:var(--faint)">还没有角色卡。填好下面的五官描述/参考图后点「把当前配置存为角色卡」。</div>';
+    cbox.querySelectorAll('[data-card]').forEach(b=>b.onclick=()=>{
+      const c=S.faceCards.find(x=>x.id===b.dataset.card);if(!c)return;
+      S.faceType=[c.face,c.costume].filter(Boolean).join('，');
+      if(S.faceType){ft.value=S.faceType;store.set('xy_facetype',S.faceType);}
+      if(c.img){S.faceRef=c.img;store.set('xy_faceref',S.faceRef);}
+      S.faceLock=true;store.set('xy_facelock',true);
+      S.faceActive=c.id;store.set('xy_faceactive',c.id);
+      const tg=wrap.querySelector('#faceToggle');if(tg)tg.checked=true;
+      renderCards();toast('已启用角色卡：'+c.name);
+    });
+    cbox.querySelectorAll('[data-cedit]').forEach(b=>b.onclick=()=>{
+      const c=S.faceCards.find(x=>x.id===b.dataset.cedit);if(c)openCardForm(c);
+    });
+    cbox.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=()=>{
+      const c=S.faceCards.find(x=>x.id===b.dataset.cdel);if(!c)return;
+      S.faceCards=S.faceCards.filter(x=>x.id!==b.dataset.cdel);
+      if(S.faceActive===c.id){S.faceActive='';store.set('xy_faceactive','');}
+      store.set('xy_facecards',S.faceCards);renderCards();toast('角色卡已删除：'+c.name);
+    });
+  };
+  renderCards();
+  wrap.querySelector('#cardSave').onclick=()=>{
+    if(!S.faceType&&!S.faceRef)return toast('先填五官描述或选张参考图，才有内容可存');
+    const name=prompt('给这张角色卡起个名字：');
+    if(!name||!name.trim())return;
+    if(S.faceCards.length>=10)return toast('角色卡最多 10 张，先删几张');
+    const c={id:uid(),name:name.trim().slice(0,12),face:S.faceType,img:S.faceRef,costume:''};
+    S.faceCards.unshift(c);store.set('xy_facecards',S.faceCards);
+    S.faceActive=c.id;store.set('xy_faceactive',c.id);
+    renderCards();toast('已存为角色卡：'+c.name);
+  };
+  wrap.querySelector('#cardNew').onclick=()=>{
+    if(S.faceCards.length>=10)return toast('角色卡最多 10 张，先删几张');
+    openCardForm(null);
+  };
   const ft=wrap.querySelector('#faceType');
   ft.oninput=()=>{S.faceType=ft.value.slice(0,200);store.set('xy_facetype',S.faceType);};
   wrap.querySelector('#faceToggle').onchange=e=>{
@@ -2438,6 +2493,93 @@ function openFace(){
     if(S.faceLock&&!S.seed){S.seed=String((Math.random()*4294967295)|0);store.set('xy_seed',S.seed);}
     closeOverlays();
     toast(S.faceLock?'人物一致生效中 · Seed '+(S.seed||'随机'):'已保存（模式未开启）');
+  };
+}
+
+/* ================= 角色卡编辑表单 ================= */
+function openCardForm(c){ // c=null 新建
+  openSheet(c?'编辑角色卡 · '+c.name:'新建角色卡',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  const d=c||{id:null,name:'',face:'',img:'',costume:''};
+  wrap.innerHTML=`<div class="field"><label>角色名</label><input id="cfName" value="${esc(d.name)}" maxlength="12" placeholder="例：小雪" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink)"></div>
+  <div class="field" style="margin-top:4px"><label>五官长相（中文，写形状：脸型/眼型/嘴/鼻/发）</label><textarea id="cfFace" rows="2" placeholder="例：圆脸、杏眼、单眼皮、小嘴、银白长发" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(d.face)}</textarea></div>
+  <div class="field" style="margin-top:4px"><label>默认服装（可选，启用时会一并拼进长相描述）</label><textarea id="cfCos" rows="2" placeholder="例：白色哥特裙、红色发带" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(d.costume)}</textarea></div>
+  <div class="field" style="margin-top:4px"><label>长相参考图（可选）</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="cfUp" type="button" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 14px;font-size:12.5px">${d.img?'换一张':'选图'}</button>
+      <span id="cfPrev">${d.img?`<img src="${d.img}" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--rule)">`:'<span style="font-size:11.5px;color:var(--faint)">未设置</span>'}</span>
+    </div>
+  </div>
+  <button id="cfSave" type="button" style="width:100%;margin-top:10px;border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px;font-size:13.5px;font-weight:600">保存</button>`;
+  box.appendChild(wrap);
+  let img=d.img;
+  wrap.querySelector('#cfUp').onclick=()=>{
+    const fi=document.createElement('input');fi.type='file';fi.accept='image/*';
+    fi.onchange=async()=>{
+      const f=fi.files&&fi.files[0];if(!f)return;
+      const v=await fileToDataURL(f,480);
+      if(!v)return toast('图片没读出来，换一张试试');
+      img=v;
+      wrap.querySelector('#cfPrev').innerHTML=`<img src="${img}" style="width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid var(--rule)">`;
+      toast('图片已选，记得点保存');
+    };
+    fi.click();
+  };
+  wrap.querySelector('#cfSave').onclick=()=>{
+    const name=wrap.querySelector('#cfName').value.trim();
+    if(!name)return toast('先起个角色名');
+    const face=wrap.querySelector('#cfFace').value.trim().slice(0,200);
+    const cos=wrap.querySelector('#cfCos').value.trim().slice(0,120);
+    if(!face&&!img)return toast('五官描述和参考图至少填一样，不然锁不住');
+    if(c){c.name=name;c.face=face;c.costume=cos;c.img=img;}
+    else{S.faceCards.unshift({id:uid(),name,face,costume:cos,img});S.faceActive='';}
+    store.set('xy_facecards',S.faceCards);
+    closeOverlays();toast(c?'角色卡已更新':'角色卡已创建');
+  };
+}
+
+/* ================= 通配符词表：__名字__ 每张图随机抽词替换 ================= */
+function openWilds(){
+  openSheet('通配符词表（__随机换词__）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px">提示词里写 <b style="color:var(--ink)">__词表名__</b>，每次出图自动随机抽一个词替换。配合批量抽卡=组合爆炸式探索。例：<b style="color:var(--ink)">一个女孩在__场景__，__发型__，__天气__</b>。词表里再写 __别的词表__ 也行（套娃两层）。</div>
+  <div id="wildList" style="display:flex;flex-direction:column;gap:6px"></div>
+  <button id="wildNew" type="button" style="width:100%;margin-top:8px;border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:12px;padding:10px;font-size:12.5px">＋ 新建词表</button>`;
+  box.appendChild(wrap);
+  const wbox=wrap.querySelector('#wildList');
+  const renderWilds=()=>{
+    const keys=Object.keys(S.wilds);
+    wbox.innerHTML=keys.map(k=>`<div style="display:flex;gap:6px;align-items:center">
+      <button data-wild="${esc(k)}" style="flex:1;text-align:left;border:1px solid var(--rule);background:var(--elev);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(k)} <span style="color:var(--faint)">· ${S.wilds[k].length} 条</span></button>
+      <button data-wdel="${esc(k)}" style="flex:0 0 auto;border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:10px;padding:6px 10px;font-size:12px">†</button>
+    </div>`).join('')||'<div style="font-size:11.5px;color:var(--faint)">还没有词表，先建一个。</div>';
+    wbox.querySelectorAll('[data-wild]').forEach(b=>b.onclick=()=>openWildForm(b.dataset.wild));
+    wbox.querySelectorAll('[data-wdel]').forEach(b=>b.onclick=()=>{
+      delete S.wilds[b.dataset.wdel];store.set('xy_wilds',S.wilds);renderWilds();toast('词表已删除');
+    });
+  };
+  renderWilds();
+  wrap.querySelector('#wildNew').onclick=()=>openWildForm(null);
+}
+function openWildForm(name){ // name=null 新建
+  openSheet(name?'词表 · '+name:'新建词表',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
+  wrap.innerHTML=`<div class="field"><label>词表名（提示词里就用 __这个词__ 调用）</label><input id="wfName" value="${esc(name||'')}" ${name?'disabled':''} placeholder="例：场景 / 天气 / 动作" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink)"></div>
+  <div class="field" style="margin-top:4px"><label>候选词（一行一个）</label><textarea id="wfTa" rows="6" placeholder="例：\n海边沙滩\n樱花树下\n霓虹街头\n雨中屋檐" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(name?(S.wilds[name]||[]).join('\n'):'')}</textarea>
+  <div style="font-size:11.5px;color:var(--muted)">中文英文都行，会随提示词一起翻译。上限 60 行。</div></div>
+  <button id="wfSave" type="button" style="width:100%;margin-top:10px;border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:12px;font-size:13.5px;font-weight:600">保存词表</button>`;
+  box.appendChild(wrap);
+  wrap.querySelector('#wfSave').onclick=()=>{
+    const k=(name||wrap.querySelector('#wfName').value.trim().slice(0,12));
+    if(!k)return toast('先给词表起个名');
+    const lines=wrap.querySelector('#wfTa').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,60);
+    if(!lines.length){delete S.wilds[k];toast('词表为空，已删除');}
+    else{S.wilds[k]=lines;toast('词表已保存：'+k+'（'+lines.length+' 条）');}
+    store.set('xy_wilds',S.wilds);
+    closeOverlays();
   };
 }
 
@@ -2544,6 +2686,18 @@ function fileToDataURL(file,max=1024){
   });
 }
 
+/* ================= 通配符：__词表名__ 每张图随机抽词替换（支持套娃，最多5层） ================= */
+function applyWilds(t){
+  let s=t||'';
+  for(let i=0;i<5&&/__([^_]+)__/.test(s);i++){
+    s=s.replace(/__([^_]+)__/g,(m,k)=>{
+      const arr=S.wilds[k.trim()]||[];
+      return arr.length?arr[Math.floor(Math.random()*arr.length)]:m;
+    });
+  }
+  return s;
+}
+
 /* ================= send / generate ================= */
 function pushMsg(m){S.msgs.push(m);persistMsgs();const list=$('#chatList');const hero=list.querySelector('.hero');if(hero)list.innerHTML='';list.appendChild(msgEl(m));scrollBottom();}
 
@@ -2588,6 +2742,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   }else{
   const st=activeStyle(),cs=selChars();
   const parts=[];
+  userText=applyWilds(userText); // 通配符：__词表__ 每张图随机换词
   if(userText)parts.push(userText);
   if(extraPrompt)parts.push(extraPrompt);
   const refWord=S.strength>=80?'严格参考所附画风参考图':S.strength>=50?'重点参考所附画风参考图':'仅借鉴所附画风参考图的整体氛围';
