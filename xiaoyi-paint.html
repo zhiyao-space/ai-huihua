@@ -1804,10 +1804,12 @@ function libAdd(it){
   persist('xy_artists',S.artists,false);renderArtists();
   toast('「'+it.n+'」已加入画师串并启用');
 }
-function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（全用户可见）
+function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（v2清单存URL按需加载，兼容v1全量dataURL）
   const e=S.libimg[str];
   if(e)return e.img;
-  return (window.XY_SAMPLES&&XY_SAMPLES[str])||null;
+  const B=window.XY_SAMPLES;
+  if(!B)return null;
+  return (B.urls&&B.urls[str])||B[str]||null;
 }
 let bakedP=null;
 function bakeAfter(){ // 内置包就绪后刷新三处缩略图
@@ -1841,7 +1843,7 @@ function libChipHTML(it){
   const added=libHas(it.s);
   const sm=libImgOf(it.s);
   const thumb=sm
-    ?'<img class="libthumb" src="'+sm+'" alt=""><span class="libreroll" data-k="'+esc(it.s)+'" title="重出一张">↻</span>'
+    ?'<img class="libthumb" loading="lazy" decoding="async" src="'+sm+'" alt=""><span class="libreroll" data-k="'+esc(it.s)+'" title="重出一张">↻</span>'
     :'<span class="libthumb empty sampbtn" data-k="'+esc(it.s)+'">出小样</span>';
   return '<span class="libside" data-side="1">'+thumb+'</span>'
     +'<span class="libtxt"><b>'+esc(it.n)+(added?' · 已加入':'')+'</b><span>'+esc(it.s)+'</span>'+(it.d?'<em>'+esc(it.d)+'</em>':'')+'</span>';
