@@ -1054,20 +1054,35 @@ async function apiUnderstand(p,text){
 }
 /* ================= 内置提示词翻译器 ================= */
 const CJK_RE=/[\u3400-\u9fff\uf900-\ufaff]/;
-async function translatePrompt(p,text,force){
+async function translatePrompt(p,text,force){ // 分层翻译：只翻中文片段，artist:串/权重括号/英文tag原样保留；分块发送防 480 截断
   if(!CJK_RE.test(text))return text; // 没有中文就没有可翻的
   if(!force&&!S.translate)return text;
-  // 内置免费翻译接口（不走任何对话模型）
+  const segs=text.split(/([\u3400-\u9fff\uf900-\ufaff]+)/); // 中文 run / 非中文 run 交替
+  const runs=[];
+  for(let i=1;i<segs.length;i+=2){const s=segs[i].trim();if(s)runs.push(s);}
+  if(!runs.length)return text;
+  const chunks=[];let cur='';
+  for(const s of runs){const seg=cur?cur+'，'+s:s;if(seg.length>470){chunks.push(cur);cur=s;}else cur=seg;}
+  if(cur)chunks.push(cur);
+  const outs=[];
   try{
-    const q=encodeURIComponent(text.slice(0,480));
-    const r=await fetch('https://api.mymemory.translated.net/get?q='+q+'&langpair=zh-CN|en-GB');
-    if(r.ok){
+    for(const c of chunks){ // 内置免费翻译接口（不走任何对话模型），每块≤470字符
+      const q=encodeURIComponent(c);
+      const r=await fetch('https://api.mymemory.translated.net/get?q='+q+'&langpair=zh-CN|en-GB');
+      if(!r.ok)throw new Error('http '+r.status);
       const j=await r.json();
       const t=j&&j.responseData&&j.responseData.translatedText;
-      if(t)return String(t);
+      if(!t)throw new Error('empty');
+      outs.push(String(t));
     }
-  }catch(e){}
-  return text; // 翻译失败按原文发送
+  }catch(e){return text;} // 翻译失败按原文发送
+  const merged=outs.join(', ');
+  let placed=false;
+  return segs.map((s,i)=>{
+    if(i%2!==1||!s||!s.trim())return s; // 非中文 run（画师串/参数码/画质词）原样保留
+    if(placed)return ' ';
+    placed=true;return ' '+merged+' ';
+  }).join('');
 }
 
 /* ================= 助手 persona ================= */
@@ -3310,15 +3325,19 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     const fw=S.faceW>=80?'严格参考所附长相参考图':S.faceW>=50?'重点参考所附长相参考图':'仅借鉴所附长相参考图的长相气质';
     parts.push('人物长相类型锁定：'+fw+'，五官长相保持「'+S.faceType+'」的类型特征，不同场景、动作与角度下长相类型保持一致。');
   }
+  const isNaiM=/nai[\s_-]?diffusion/i.test(String(p.model||'')); // NAI 系用 {} [] 权重语法；其他模型换算数值权重
   const artsOn=S.artists.filter(a=>a.on&&a.str);
-  if(artsOn.length)parts.push(artsOn.map(a=>{ // 画师权重：>1 用 {} 加权（每0.25一层，最多4层），<1 用 [] 减权
+  if(artsOn.length)parts.push(artsOn.map(a=>{ // 画师权重：NAI 系 {} 加权（每0.25一层最多4层）/ [] 减权；非 NAI 系逐 tag (tag:权重)
     const w=S.artistsW[a.id]??1;
     if(Math.abs(w-1)<0.05)return a.str;
-    if(w>1){const k=Math.min(4,Math.round((w-1)/0.25));return '{'.repeat(k)+a.str+'}'.repeat(k);}
-    return '['+a.str+']';
+    if(isNaiM){
+      if(w>1){const k=Math.min(4,Math.round((w-1)/0.25));return '{'.repeat(k)+a.str+'}'.repeat(k);}
+      return '['+a.str+']';
+    }
+    const ww=Math.max(0.8,Math.min(1.4,w)).toFixed(2);
+    return a.str.split(',').map(t=>t.trim()).filter(Boolean).map(t=>'('+t+':'+ww+')').join(', ');
   }).join(', '));
   prompt=parts.filter(Boolean).join('\n');
-  const isNaiM=/nai[\s_-]?diffusion/i.test(String(p.model||'')); // NAI 官方系模型自动切 V4.5 画质词体系
   const QT_LV=isNaiM?{light:'very aesthetic, masterpiece, no text',heavy:'very aesthetic, masterpiece, no text, absurdres, extremely detailed',human:'very aesthetic, masterpiece, no text, depth of field, upper body'}:{light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
   refs=[...((S.codeMode&&st&&st.code&&S.codeNoImg)?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上（st 为空时不再抛错）
