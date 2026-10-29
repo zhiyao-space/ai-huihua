@@ -1813,21 +1813,27 @@ let bakedP=null;
 function bakeAfter(){ // 内置包就绪后刷新三处缩略图
   try{renderLibList();renderStyleLib();renderArtists();}catch(e){}
 }
-function loadBakedSamples(){ // 惰性加载内置小样包 samples.js：失败自动重试3次，成功即刷缩略图
+function loadBakedSamples(){ // 惰性加载内置小样包 samples.js：失败/卡死自动重试3次，成功即刷缩略图
   if(bakedP)return bakedP;
   bakedP=new Promise(res=>{
     if(window.XY_SAMPLES)return res(true);
-    let n=0;
-    (function tryOnce(){
+    let n=0,timer=null,done=false;
+    const giveup=()=>{ // 本次尝试失败（报错或卡死）：清场重试
+      if(done)return; if(timer){clearTimeout(timer);timer=null;}
+      if(n<3){n++;setTimeout(tryOnce,1500);}
+      else{bakedP=null;res(false);}
+    };
+    const ok=()=>{ // 下载完成（含旧僵尸标签迟到的成功）
+      if(done)return; done=true; if(timer)clearTimeout(timer);
+      if(window.XY_SAMPLES){res(true);bakeAfter();} else giveup();
+    };
+    function tryOnce(){
+      if(done)return;
       const s=document.createElement('script');s.src='samples.js?v=2';
-      s.onload=()=>{
-        if(window.XY_SAMPLES){res(true);bakeAfter();}
-        else if(n<3){n++;setTimeout(tryOnce,3000);}
-        else res(false);
-      };
-      s.onerror=()=>{ if(n<3){n++;setTimeout(tryOnce,3000);} else res(false); };
-      document.head.appendChild(s);
-    })();
+      s.onload=ok;s.onerror=giveup;document.head.appendChild(s);
+      timer=setTimeout(giveup,25000); // 25秒没下完按卡死处理，重开一枪；旧请求若迟到仍算数
+    }
+    tryOnce();
   });
   return bakedP;
 }
