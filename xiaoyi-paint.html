@@ -765,6 +765,8 @@ const S={
   strength:store.get('xy_strength',75),
   codeMode:store.get('xy_code_mode',true),
   codeNoImg:store.get('xy_code_noimg',true), // 纯文字锁风：参数码生效时不把画风参考图发给模型，防参考图人物形象渗入
+  steps:store.get('xy_steps',''), // 高级参数：步数（SD系模型认，空=不发送）
+  sampler:store.get('xy_sampler',''), // 高级参数：采样器（SD系模型认，空=不发送）
   translate:store.get('xy_translate',true),
   snips:store.get('xy_snips',null)||[{id:uid(),text:'细腻光影，柔和阴影'},{id:uid(),text:'电影感构图，浅景深'},{id:uid(),text:'细节丰富，8k 画质，highly detailed'}],
   artists:store.get('xy_artists',null)||[
@@ -929,17 +931,22 @@ async function apiModels(p){
   const j=await r.json();
   return (j.data||[]).map(m=>m.id).filter(Boolean);
 }
-async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg='',seed=''}){
+async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg='',seed='',steps='',sampler=''}){
   const root=apiRoot(p.baseUrl), model=p.model;
   if(!model)throw new Error('请先选择绘画模型');
   const seedN=parseInt(seed,10); // 有效数字才传，空/-1=随机
   const hasSeed=Number.isInteger(seedN)&&seedN>=0;
+  const stepN=parseInt(steps,10); // 高级参数：SD系模型认才生效，空=不发送
+  const hasSteps=Number.isInteger(stepN)&&stepN>=1&&stepN<=150;
+  const hasSmp=!!sampler;
   let res;
   if(refDataUrls.length){
     const fd=new FormData();
     fd.append('model',model); fd.append('prompt',prompt); fd.append('n','1'); fd.append('size',size);
     if(neg)fd.append('negative_prompt',neg);
     if(hasSeed)fd.append('seed',String(seedN));
+    if(hasSteps)fd.append('steps',String(stepN));
+    if(hasSmp)fd.append('sampler',sampler);
     for(const u of refDataUrls){
       const blob=await (await fetch(u)).blob();
       fd.append(refDataUrls.length>1?'image[]':'image',blob,'ref'+uid()+'.png');
@@ -950,11 +957,11 @@ async function apiGenerate(p,{prompt,refDataUrls=[],size='1024x1024',neg='',seed
       // 参考图不被该模型/中转支持时，退回纯文字生成
       if(/^(4\d\d)/.test(String(res.status))){
         toast('参考图接口不被支持，已退回纯文字生成');
-        res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{})})});
+        res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{}),...(hasSteps?{steps:stepN}:{}),...(hasSmp?{sampler}:{})})});
       }else throw new Error('HTTP '+res.status+' '+t.slice(0,160));
     }
   }else{
-    res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{})})});
+    res=await fetch(root+'/images/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model,prompt,n:1,size,...(neg?{negative_prompt:neg}:{}),...(hasSeed?{seed:seedN}:{}),...(hasSteps?{steps:stepN}:{}),...(hasSmp?{sampler}:{})})});
   }
   if(!res.ok){
     const t=await res.text().catch(()=>'');
@@ -1366,6 +1373,15 @@ function openParams(){
     </div>
   </div>
   <div class="field" style="margin-top:4px">
+    <label>步数 / 采样器（高级，可选）</label>
+    <div style="display:flex;gap:8px">
+      <input id="stepText" value="${esc(S.steps)}" inputmode="numeric" placeholder="步数，空=自动" style="flex:1;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);min-width:0">
+      <input id="samplerText" value="${esc(S.sampler)}" list="sampList" placeholder="采样器，空=自动" style="flex:1;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:13px;outline:none;color:var(--ink);min-width:0">
+      <datalist id="sampList"><option value="Euler a"></option><option value="Euler"></option><option value="DPM++ 2M Karras"></option><option value="DPM++ SDE Karras"></option><option value="DPM++ 2M SDE Karras"></option><option value="UniPC"></option><option value="DDIM"></option><option value="LMS Karras"></option><option value="Heun"></option><option value="DPM2 a Karras"></option></datalist>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted)">SD 系模型才认这两个参数（NAI 同款思路），填了随请求发送，留空=后端自动。官方系模型会忽略或报错，报错就清空。</div>
+  </div>
+  <div class="field" style="margin-top:4px">
     <label>风格参数码强度 <span id="cwVal" style="color:var(--ink);font-weight:600">${S.codeWeight.toFixed(2)}</span></label>
     <input type="range" id="cwRange" min="0.5" max="2" step="0.1" value="${S.codeWeight}" style="width:100%">
     <div style="font-size:11.5px;color:var(--muted)">专属画风太淡往右调，太浓压过画面往左调。需在「画风」页卡片里设参数码并开启参数码模式。</div>
@@ -1447,6 +1463,10 @@ function openParams(){
   const seedInp=wrap.querySelector('#seedText');
   seedInp.oninput=()=>{S.seed=seedInp.value.trim().slice(0,18);store.set('xy_seed',S.seed);};
   wrap.querySelector('#seedRand').onclick=()=>{seedInp.value='';S.seed='';store.set('xy_seed',S.seed);toast('已切回随机种子');};
+  const stepInp=wrap.querySelector('#stepText');
+  stepInp.oninput=()=>{S.steps=stepInp.value.trim().slice(0,4);store.set('xy_steps',S.steps);};
+  const sampInp=wrap.querySelector('#samplerText');
+  sampInp.oninput=()=>{S.sampler=sampInp.value.trim().slice(0,32);store.set('xy_sampler',S.sampler);};
   const cwr=wrap.querySelector('#cwRange');
   cwr.oninput=()=>{S.codeWeight=+cwr.value;store.set('xy_codeweight',S.codeWeight);wrap.querySelector('#cwVal').textContent=S.codeWeight.toFixed(2);};
   const artQuick=wrap.querySelector('#artQuick');
@@ -2536,7 +2556,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     updateProgress(prog,next,next<25?'提交请求':next<65?(n>1?'生成 '+n+' 张 · 进行中':'模型生成中'):'接收图片');
   },420);
   try{
-    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:useSize,neg:useNeg,seed:useSeed})));
+    const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:useSize,neg:useNeg,seed:useSeed,steps:S.steps,sampler:S.sampler})));
     const imgs=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
     if(!imgs.length){const e=results.find(r=>r.status==='rejected');throw (e&&e.reason)||new Error('生成失败');}
     if(imgs.length<n)toast('有 '+(n-imgs.length)+' 张没出来，其余已收到');
