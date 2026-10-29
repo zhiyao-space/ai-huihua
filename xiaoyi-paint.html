@@ -1810,14 +1810,24 @@ function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包�
   return (window.XY_SAMPLES&&XY_SAMPLES[str])||null;
 }
 let bakedP=null;
-function loadBakedSamples(){ // 惰性加载内置小样包 samples.js（文件缺失或为空时静默跳过）
+function bakeAfter(){ // 内置包就绪后刷新三处缩略图
+  try{renderLibList();renderStyleLib();renderArtists();}catch(e){}
+}
+function loadBakedSamples(){ // 惰性加载内置小样包 samples.js：失败自动重试3次，成功即刷缩略图
   if(bakedP)return bakedP;
   bakedP=new Promise(res=>{
     if(window.XY_SAMPLES)return res(true);
-    const s=document.createElement('script');s.src='samples.js?v=1';
-    s.onload=()=>res(!!window.XY_SAMPLES); // 不限时：5MB包在手机网络下可能要下好几秒，下完为准
-    s.onerror=()=>res(false);
-    document.head.appendChild(s);
+    let n=0;
+    (function tryOnce(){
+      const s=document.createElement('script');s.src='samples.js?v=2';
+      s.onload=()=>{
+        if(window.XY_SAMPLES){res(true);bakeAfter();}
+        else if(n<3){n++;setTimeout(tryOnce,3000);}
+        else res(false);
+      };
+      s.onerror=()=>{ if(n<3){n++;setTimeout(tryOnce,3000);} else res(false); };
+      document.head.appendChild(s);
+    })();
   });
   return bakedP;
 }
@@ -1981,11 +1991,12 @@ $$('#libOv [data-ss]').forEach(b=>b.onclick=()=>{
 });
 $('#btnBatch').onclick=batchSamples;
 $('#btnExportSamp').onclick=exportSamples;
-setTimeout(()=>{loadBakedSamples().then(ok=>{if(ok){renderLibList();renderStyleLib();renderArtists();}else{bakedP=null;}});},1500); // 开机闲时加载内置小样包，加载完刷一遍缩略图；失败清缓存下次再试
+setTimeout(()=>{loadBakedSamples();},1200); // 开机闲时预载内置小样包（加载完自动刷缩略图，失败内部自动重试）
 $('#btnLib').onclick=()=>{
   $('#libSearch').value='';libQ='';libTab='combo';
   renderSampSubj();
   renderLibTabs();renderLibList();
+  loadBakedSamples().then(ok=>{if(ok)renderLibList();}); // 开词库时若内置包还没就绪，就绪后补刷缩略图
   ovOpen();$('#libOv').classList.add('show');
 };
 $('#libSearch').oninput=e=>{libQ=e.target.value;renderLibTabs();renderLibList();};
