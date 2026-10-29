@@ -863,7 +863,7 @@ async function persistMsgs(){ // 聊天图片全部进 IndexedDB，localStorage 
     return c;
   });
   await Promise.all(jobs).catch(()=>{});
-  store.set('xy_msgs',out);
+  if(!store.set('xy_msgs',out))toast('本机存储空间不足，聊天记录可能没存上');
 }
 async function persistLab(){ // 画风实验预览图同样进 IndexedDB，刷新不丢
   const jobs=[];
@@ -873,7 +873,7 @@ async function persistLab(){ // 画风实验预览图同样进 IndexedDB，刷�
     return c;
   });
   await Promise.all(jobs).catch(()=>{});
-  store.set('xy_labmsgs',out);
+  if(!store.set('xy_labmsgs',out))toast('本机存储空间不足，实验记录可能没存上');
 }
 async function persistLibImg(){ // 词库小样图进 IndexedDB，key=词条串内容（词库/画师串共用一份小样）
   const jobs=[];
@@ -886,12 +886,15 @@ async function persistLibImg(){ // 词库小样图进 IndexedDB，key=词条串�
   await Promise.all(jobs).catch(()=>{});
   store.set('xy_libimg',out);
 }
-async function persistSessions(){ // 归档会话里的图片同样转存 IndexedDB
+async function persistSessions(){ // 归档会话图片转存 IndexedDB：单图+多图都转引用，防 localStorage 爆仓丢历史
   const jobs=[];
-  const conv=(arr,pre)=>arr.map(s=>({...s,msgs:s.msgs.map(m=>{const c={...m};if(c.imgs&&c.imgs.length)c.imgs=c.imgs.map((v,i)=>{if(isData(v)){const k=pre+c.id+':'+i;jobs.push(idbSet(k,v));return '@idb:'+k;}return v;});return c;})}));
+  const conv=(arr,pre)=>arr.map(s=>({...s,msgs:s.msgs.map(m=>{const c={...m};
+    if(isData(c.img)){const k=pre+c.id;jobs.push(idbSet(k,c.img));c.img='@idb:'+k;}
+    if(c.imgs&&c.imgs.length)c.imgs=c.imgs.map((v,i)=>{if(isData(v)){const k=pre+c.id+':'+i;jobs.push(idbSet(k,v));return '@idb:'+k;}return v;});
+    return c;})}));
   const a=conv(S.sessions,'ss:'),b=conv(S.labSessions,'sl:');
   await Promise.all(jobs).catch(()=>{});
-  store.set('xy_sessions',a);store.set('xy_labsessions',b);
+  if(!store.set('xy_sessions',a)||!store.set('xy_labsessions',b))toast('本机存储空间不足，历史会话可能没存上');
 }
 async function hydrateImgs(){ // 启动时把 IndexedDB 里的图片补回内存
   let dirty=false;
@@ -921,8 +924,9 @@ async function hydrateImgs(){ // 启动时把 IndexedDB 里的图片补回内存
     if(!o||!o.img){delete S.libimg[k];dirty=true;continue;}
     if(isRef(o.img)){const v=await fix(o.img.slice(5));if(v){o.img=v;dirty=true;}else{delete S.libimg[k];dirty=true;}}
   }
-  for(const s of [...S.sessions,...S.labSessions]){ // 归档会话图片补回
+  for(const s of [...S.sessions,...S.labSessions]){ // 归档会话图片补回（单图+多图）
     for(const m of s.msgs){
+      if(isRef(m.img)){const g=await fix(m.img.slice(5));if(g){m.img=g;dirty=true;}}
       if(m.imgs&&m.imgs.length){let ch=false;const a=[];
         for(const v of m.imgs){if(isRef(v)){const g=await fix(v.slice(5));a.push(g||'');ch=true;}else a.push(v);}
         if(ch){m.imgs=a;dirty=true;}}
@@ -2318,24 +2322,24 @@ function sessTitle(msgs){
   const u=msgs.find(m=>m.role==='user'&&m.text);
   return u?u.text.slice(0,14):'空会话';
 }
-async function archiveCurrent(){ // 当前流有内容就归档进历史，返回是否归档了
+async function archiveCurrent(){ // 当前流有内容就归档进历史（快照副本防串档），返回是否归档了
   const lab=labMode,cur=lab?S.labMsgs:S.msgs;
   if(!cur.length)return false;
-  (lab?S.labSessions:S.sessions).unshift({id:uid(),ts:Date.now(),title:sessTitle(cur),msgs:cur});
+  (lab?S.labSessions:S.sessions).unshift({id:uid(),ts:Date.now(),title:sessTitle(cur),msgs:[...cur]});
   return true;
 }
 async function newSession(){ // 开新会话：当前记录自动归档
   const n=await archiveCurrent();
-  if(labMode){S.labMsgs=[];persist('xy_labmsgs',S.labMsgs,false);renderLabMsgs();}
-  else{S.msgs=[];persist('xy_msgs',S.msgs,false);renderMsgs();}
+  if(labMode){S.labMsgs=[];await persistLab();renderLabMsgs();}
+  else{S.msgs=[];await persistMsgs();renderMsgs();}
   renderGallery();
   await persistSessions();closeOverlays();
   toast(n?'已开新会话，旧记录存进历史会话':'已开新会话');
 }
 function clearCurrent(){ // 清除当前模式记录（图片一并从画廊移除）
   askConfirm('清除记录',labMode?'清空画风实验的全部配方记录？已出预览图也会从作品画廊移除，此操作不可恢复。':'清空当前聊天记录？对话里的图也会从作品画廊移除，此操作不可恢复。',async()=>{
-    if(labMode){S.labMsgs=[];persist('xy_labmsgs',S.labMsgs,false);renderLabMsgs();}
-    else{S.msgs=[];persist('xy_msgs',S.msgs,false);renderMsgs();}
+    if(labMode){S.labMsgs=[];await persistLab();renderLabMsgs();}
+    else{S.msgs=[];await persistMsgs();renderMsgs();}
     renderGallery();
     closeOverlays();toast('已清除');
   });
@@ -2345,8 +2349,8 @@ async function restoreSession(id){ // 切回某条历史会话（当前流非空
   const i=list.findIndex(s=>s.id===id);if(i<0)return;
   await archiveCurrent();
   const back=list.splice(i,1)[0];
-  if(labMode){S.labMsgs=back.msgs;persist('xy_labmsgs',S.labMsgs,false);renderLabMsgs();}
-  else{S.msgs=back.msgs;persist('xy_msgs',S.msgs,false);renderMsgs();}
+  if(labMode){S.labMsgs=back.msgs;await persistLab();renderLabMsgs();}
+  else{S.msgs=back.msgs;await persistMsgs();renderMsgs();}
   renderGallery();
   await persistSessions();closeOverlays();
   toast('已切回「'+back.title+'」');
@@ -2373,7 +2377,8 @@ function openSessions(){
   hd.style.cssText='padding:12px 18px 4px;font-size:11px';
   hd.textContent=list.length?('历史会话 '+list.length+' 条 · 点标题切回，右侧删除'):'还没有历史会话';
   box.appendChild(hd);
-  list.slice(0,20).forEach(s=>{
+  const lw=document.createElement('div');lw.className='m-list'; // 全部历史都列出，滚动查看
+  list.forEach(s=>{
     const d=document.createElement('div');
     d.style.cssText='display:flex;align-items:stretch;gap:6px;padding:2px 10px';
     const b=document.createElement('button');b.className='s-item';b.style.flex='1';
@@ -2382,8 +2387,9 @@ function openSessions(){
     const x=document.createElement('button');x.className='s-item danger';x.style.cssText='flex:0 0 auto;padding:12px 16px';
     x.textContent='✕';
     x.onclick=()=>delSession(s.id);
-    d.appendChild(b);d.appendChild(x);box.appendChild(d);
+    d.appendChild(b);d.appendChild(x);lw.appendChild(d);
   });
+  box.appendChild(lw);
 }
 $('#btnSess').onclick=()=>openSessions();
 function setLabMode(on){ // 聊天页形态切换：对话 ⇄ 画风实验
