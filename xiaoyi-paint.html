@@ -1369,6 +1369,7 @@ function openParams(){
       <button data-neg="fix" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">防崩</button>
       <button data-neg="hands" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">手部修正</button>
       <button data-neg="style" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">画风排除</button>
+      <button data-neg="nai" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">NAI防崩</button>
       <button data-neg="clear" style="border:1px solid var(--rule);background:transparent;color:var(--muted);border-radius:999px;padding:5px 12px;font-size:11.5px">清空</button>
     </div>
   </div>
@@ -1443,7 +1444,8 @@ function openParams(){
   const NEG_PRESET={
     fix:'lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, cross-eyed, extra digits, fused fingers, bad hands, mutated hands, long neck, blurry',
     hands:'bad hands, mutated hands, extra fingers, fused fingers, missing fingers, extra digits, fewer digits, malformed limbs',
-    style:'photorealistic, realistic, 3d render, photo, western cartoon, chibi'
+    style:'photorealistic, realistic, 3d render, photo, western cartoon, chibi',
+    nai:'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers, extra arms, extra legs'
   };
   wrap.querySelectorAll('[data-neg]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.neg;
@@ -1451,7 +1453,7 @@ function openParams(){
     const cur=nt.value.replace(/\s*$/,'');const add=NEG_PRESET[k];
     const val=cur?(cur.includes(add)?cur:cur+', '+add):add;
     nt.value=val.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
-    toast(k==='fix'?'已追加防崩负面词':k==='hands'?'已追加手部修正词':'已追加画风排除词');
+    toast(k==='fix'?'已追加防崩负面词':k==='hands'?'已追加手部修正词':k==='nai'?'已追加 NAI V4.5 防崩负面词':'已追加画风排除词');
   });
   wrap.querySelector('#negTr').onclick=async()=>{ // 中文负面词翻成英文（负面词不过主翻译管线，这里手动转）
     const v=nt.value.trim();
@@ -2767,7 +2769,8 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     return '['+a.str+']';
   }).join(', '));
   prompt=parts.filter(Boolean).join('\n');
-  const QT_LV={light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
+  const isNaiM=/nai[\s_-]?diffusion/i.test(String(p.model||'')); // NAI 官方系模型自动切 V4.5 画质词体系
+  const QT_LV=isNaiM?{light:'very aesthetic, masterpiece, no text',heavy:'very aesthetic, masterpiece, no text, absurdres, extremely detailed',human:'very aesthetic, masterpiece, no text, depth of field, upper body'}:{light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
   refs=[...((S.codeMode&&st&&st.code&&S.codeNoImg)?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上（st 为空时不再抛错）
   n=Math.max(1,Math.min(4,S.count|0));
