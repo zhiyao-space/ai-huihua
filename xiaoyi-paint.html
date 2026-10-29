@@ -2733,7 +2733,8 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     pushMsg({id:uid(),role:'ai',kind:'error',text:'还没配好 API。去「配置」页填好中转站地址、密钥，拉取并选择绘画模型再试。',ts:Date.now()});
     switchTab('config');return;
   }
-  let prompt,refs,n,useNeg,useSize,useSeed;
+  let prompt,refs,n,useNeg,useSize,useSeed,prog=null,timer=null;
+  try{ // 全流程兜底：拼装阶段任何报错都弹错误气泡，不再静默无响应
   if(replay){ // 同款/变体：快照原样重发，不走拼装与重翻（快照已含画风句与画师串，复现最忠实）
     prompt=replay.prompt;
     refs=replay.img?[replay.img]:[];
@@ -2768,12 +2769,12 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   prompt=parts.filter(Boolean).join('\n');
   const QT_LV={light:'best quality, amazing quality',heavy:'best quality, amazing quality, very aesthetic, absurdres, extremely detailed',human:'masterpiece, best quality, very aesthetic, absurdres, depth of field, upper body'};
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
-  refs=[...(S.codeMode&&st.code&&S.codeNoImg?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上
+  refs=[...((S.codeMode&&st&&st.code&&S.codeNoImg)?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上（st 为空时不再抛错）
   n=Math.max(1,Math.min(4,S.count|0));
   useNeg=S.neg;useSize=S.size;useSeed=S.seed;
   }
 
-  const prog={id:uid(),role:'ai',kind:'progress',text:pick(ACKS),pct:4,stage:'已读 · 理解需求',ts:Date.now()};
+  prog={id:uid(),role:'ai',kind:'progress',text:pick(ACKS),pct:4,stage:'已读 · 理解需求',ts:Date.now()};
   tgHide();pushMsg(prog);S.busy=true;$('#btnSend').disabled=true;
   setPresence('正在画…',true);markLastRead();
   // 提示词翻译（绘画模型不支持中文时，先翻成英文再发；「用英文画」会直接传入英文，跳过这步）
@@ -2786,7 +2787,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     if(promptEn===prompt)toast('翻译服务不可用，已按原文发送');
   }
   const t0=Date.now();
-  const timer=setInterval(()=>{
+  timer=setInterval(()=>{
     const cur=S.msgs.find(x=>x.id===prog.id);
     if(!cur||cur.kind!=='progress')return clearInterval(timer); // 已出结果就停表
     const next=Math.min(prog.pct+Math.max(1,(90-prog.pct)*0.06|0),92);
@@ -2812,6 +2813,15 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     setTimeout(()=>setPresence('在线 · 随时开画'),2600);
   }finally{
     S.busy=false;$('#btnSend').disabled=false;
+    S.refs=[];renderCtx();renderMsgs();
+  }
+  }catch(err){ // 拼装/快照阶段的兜底：把静默失败变成看得见的错误气泡
+    if(timer)clearInterval(timer);
+    S.busy=false;$('#btnSend').disabled=false;
+    setPresence('出了点问题');
+    const msg='生成流程中断：'+String(err&&err.message||err).slice(0,160);
+    if(prog){const idx=S.msgs.indexOf(prog);if(idx>-1){S.msgs[idx]={id:prog.id,role:'ai',kind:'error',text:msg,ts:prog.ts};try{persistMsgs();}catch(_){}}}
+    else pushMsg({id:uid(),role:'ai',kind:'error',text:msg,ts:Date.now()});
     S.refs=[];renderCtx();renderMsgs();
   }
 }
