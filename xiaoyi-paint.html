@@ -766,7 +766,8 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       </div>
       <div style="display:flex;gap:7px;padding:0 12px 12px;flex:0 0 auto">
         <button class="oc-chip" id="ocAuto" type="button" style="flex:1;padding:9px 0;text-align:center">让他们聊</button>
-        <button class="oc-chip" id="ocSelfieBtn" type="button" style="padding:9px 16px">📸 自拍</button>
+        <button class="oc-chip" id="ocSelfieBtn" type="button" style="padding:9px 14px">📸 自拍</button>
+        <button class="oc-chip" id="ocPlotBtn" type="button" style="padding:9px 14px">🎬 剧情</button>
       </div>
     </div>
     <div id="ocShoot" style="display:none;flex:1;overflow-y:auto;padding:10px 16px 20px">
@@ -778,6 +779,9 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       </div>
       <button class="oc-chip on" id="ocShootGo" type="button" style="width:100%;padding:11px">📷 生成合照</button>
       <div id="ocShootOut" style="padding:12px 0 0;text-align:center"></div>
+      <div class="field" style="margin-top:14px"><label>🎭 四连拍（给 OC 出喜怒哀惊表情包）</label><div id="ocFE" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <button class="oc-chip" id="ocFEGo" type="button" style="width:100%;padding:11px;margin-top:8px">🎭 生成四连拍</button>
+        <div id="ocFEOut" style="padding:12px 0 0;text-align:center"></div></div>
       <div style="font-size:11px;color:var(--faint);padding-top:8px;line-height:1.6">双人自动组人数 tag（2boys / 1boy 1girl…）；画风自动带当前启用的画师串；表情姿势词从词库点选。</div>
     </div>
   </div></div>
@@ -4674,7 +4678,9 @@ if(location.protocol==='file:'){try{
 S.ocs=store.get('xy_ocs',[]);
 S.ocMe=store.get('xy_ocme',null);
 S.ocMsgs=store.get('xy_ocmsgs',[]);
-let ocTab='arch',ocSel=[],ocShootA=null,ocShootB=null,ocBusy=false;
+S.ocPlot=store.get('xy_ocplot',null);
+S.ocMemoAt=store.get('xy_ocmemoat',0);
+let ocTab='arch',ocSel=[],ocShootA=null,ocShootB=null,ocShootFE=null,ocBusy=false;
 const ocSaveCards=()=>{persist('xy_ocs',S.ocs,false);store.set('xy_ocme',S.ocMe);};
 const ocSaveMsgs=()=>persist('xy_ocmsgs',S.ocMsgs,false);
 function ocCards(){return (S.ocMe?[S.ocMe]:[]).concat(S.ocs);}
@@ -4814,13 +4820,14 @@ function ocRenderFlow(){
 }
 function ocSysPrompt(){
   const cards=ocSel.map(ocById).filter(Boolean);
-  const parts=cards.map(x=>'- '+x.name+'（'+(x.gender==='f'?'女':'男')+'）：'+(x.persona||'（人设待补）')+(x.tags?'\n  外貌：'+x.tags:''));
+  const parts=cards.map(x=>'- '+x.name+'（'+(x.gender==='f'?'女':'男')+'）：'+(x.persona||'（人设待补）')+(x.tags?'\n  外貌：'+x.tags:'')+(x.mems&&x.mems.length?'\n  关于TA的记忆：'+x.mems.slice(-5).map(m=>m.t).join('；'):''));
   const rels=[];
   cards.forEach(x=>{if(x.rels)for(const k in x.rels){const o=ocById(k);if(o&&cards.some(v=>v.id===k))rels.push(x.name+' 和 '+o.name+' 是'+x.rels[k]);}});
   return ['你在驱动一个文字群聊模拟器，让下面的角色以真实人类的方式聊天，每次挑 1~2 个角色发言。',
     '铁律：1.所有角色都是真实人类，绝不暴露或暗示AI身份，禁止「作为AI」类表述；2.说话短、口语化，像真人打字：一两句话，语气词、吐槽、敷衍、接梗都行，禁止书面腔总结腔；3.严格贴合角色卡，禁止OOC，禁止一个角色替另一个说话；4.思维举止符合现实生活逻辑，禁止夸张戏剧化超现实展开；5.遵守关系设定。',
     '【群成员】\n'+parts.join('\n'),
     rels.length?'【关系】'+rels.join('；'):'',
+    S.ocPlot?'【当前剧情】'+S.ocPlot.scene+'\n围绕剧情演，可以推进时间和事件，但保持真实人类的言行逻辑。':'',
     '【输出格式】只输出 JSON 数组：[{"name":"角色名","t":"台词"}]，最多2条，每条不超过40字，禁止输出任何其他内容。'].filter(Boolean).join('\n');
 }
 async function ocTurn(auto){
@@ -4847,7 +4854,7 @@ async function ocTurn(auto){
       if(!c||!s.t)return;
       S.ocMsgs.push({who:c.id,n:c.name,t:String(s.t).slice(0,200),ts:Date.now()});
     });
-    ocSaveMsgs();ocRenderFlow();
+    ocSaveMsgs();ocRenderFlow();ocMaybeMemo();
   }catch(e){toast('OC 打字失败：'+String(e&&e.message||e).slice(0,60));}
   ocBusy=false;$('#ocAuto').textContent='让他们聊';
 }
@@ -4886,6 +4893,96 @@ async function ocSelfie(c){
   }catch(e){toast('自拍失败：'+String(e&&e.message||e).slice(0,60));}
 }
 
+/* ---- OC 记忆 / 剧情模式 / 四连拍 ---- */
+async function ocMaybeMemo(){ // 每 6 条群消息自动提炼一次「值得记住的事」写进角色档案
+  try{
+    if(S.ocMsgs.length-(S.ocMemoAt||0)<6)return;
+    S.ocMemoAt=S.ocMsgs.length;store.set('xy_ocmemoat',S.ocMemoAt);
+    const p=activePreset();if(!p||!p.ocModel)return;
+    const fresh=S.ocMsgs.filter(m=>m.who!=='sys').slice(-12);
+    if(!fresh.length)return;
+    const hist=fresh.map(m=>m.n+'：'+(m.t||'[图片]')).join('\n');
+    const names=ocCards().map(x=>x.name).join('、');
+    const r=await fetch(apiRoot(p.baseUrl)+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.ocModel,messages:[{role:'system',content:'从群聊记录里提炼值得长期记住的事件（约定/冲突/好感变化/重要决定），按角色归属。只输出 JSON 数组 [{"name":"角色名","mem":"一句话记忆"}]，没有值得记的就输出 []，禁止输出任何其他内容。'},{role:'user',content:'角色名单：'+names+'\n最近群聊：\n'+hist}],temperature:0.3,max_tokens:200})});
+    if(!r.ok)return;
+    const j=await r.json();
+    const txt=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();
+    const mm=txt.match(/\[[\s\S]*\]/);if(!mm)return;
+    let arr=null;try{arr=JSON.parse(mm[0]);}catch(e){return;}
+    if(!Array.isArray(arr))return;
+    let changed=false;
+    arr.slice(0,3).forEach(x=>{
+      const c=S.ocs.find(o=>o.name===x.name)||(S.ocMe&&S.ocMe.name===x.name?S.ocMe:null);
+      if(!c||!x.mem)return;
+      c.mems=c.mems||[];c.mems.push({t:String(x.mem).slice(0,60),ts:Date.now()});
+      if(c.mems.length>8)c.mems=c.mems.slice(-8);
+      changed=true;
+    });
+    if(changed){ocSaveCards();toast('🧠 OC 们记住了新的事');}
+  }catch(e){}
+}
+$('#ocPlotBtn').onclick=()=>{
+  openSheet(S.ocPlot?'剧情模式（进行中）':'开一段剧情',[]);
+  const sb=$('#sheetItems');sb.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:2px 4px 10px';
+  wrap.innerHTML='<textarea id="ocPlotTxt" rows="3" placeholder="设定剧情开局，比如：全员被困在一间密室，需要合作逃脱" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical"></textarea>';
+  const chips=document.createElement('div');chips.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-top:8px';
+  [['被困密室','全员被困在一间神秘的密室里，手机没信号，必须合作找线索逃脱'],['合租宿舍','新学期几个人合租到同一间公寓，正在互相认识、分配房间和家务'],['结伴旅行','几个人临时起意结伴旅行，刚到目的地车站，行程还没规划'],['末世同行','城市突发灾害，几个人结伴撤离，正在找安全屋过夜']].forEach(t=>{
+    const b=document.createElement('button');b.type='button';b.className='oc-chip';b.textContent=t[0];
+    b.onclick=()=>{$('#ocPlotTxt').value=t[1];};
+    chips.appendChild(b);
+  });
+  wrap.appendChild(chips);
+  const act=document.createElement('div');act.style.cssText='display:flex;gap:8px;margin-top:10px';
+  const go=document.createElement('button');go.type='button';go.className='oc-chip on';go.style.cssText='flex:1;padding:10px';go.textContent='🎬 开始剧情';
+  go.onclick=()=>{
+    const v=$('#ocPlotTxt').value.trim();if(!v)return toast('先写剧情开局');
+    S.ocPlot={scene:v};store.set('xy_ocplot',S.ocPlot);
+    S.ocMsgs.push({who:'sys',n:'',t:'📢 剧情开始：'+v,ts:Date.now()});
+    ocSaveMsgs();ocRenderFlow();$('#ocPlotBtn').classList.add('on');closeOverlays();
+  };
+  const st=document.createElement('button');st.type='button';st.className='oc-chip';st.style.cssText='flex:1;padding:10px';st.textContent='结束剧情';
+  st.onclick=()=>{
+    if(!S.ocPlot)return toast('当前没有进行中的剧情');
+    S.ocPlot=null;store.set('xy_ocplot',null);
+    S.ocMsgs.push({who:'sys',n:'',t:'📢 剧情杀青，回到日常闲聊',ts:Date.now()});
+    ocSaveMsgs();ocRenderFlow();$('#ocPlotBtn').classList.remove('on');closeOverlays();
+  };
+  act.appendChild(go);act.appendChild(st);wrap.appendChild(act);
+  sb.appendChild(wrap);
+  if(S.ocPlot)$('#ocPlotTxt').value=S.ocPlot.scene;
+};
+if(S.ocPlot)$('#ocPlotBtn').classList.add('on');
+const OC_FES=[['喜','smile, :d, open mouth, cheerful'],['怒','angry, frown, pouting'],['哀','crying, teary-eyed, sad'],['惊','surprised, shocked, wide-eyed']];
+$('#ocFEGo').onclick=async()=>{
+  const c=ocShootFE;if(!c)return toast('先选四连拍角色');
+  const p=activePreset();if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+  const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
+  const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+  const out=$('#ocFEOut');
+  out.innerHTML='<div style="font-size:12px;color:var(--muted)">'+esc(c.name)+' 表情包画图中（4 张，稍等）…</div>';
+  const done=[];
+  for(const fe of OC_FES){
+    try{
+      const prompt=(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||'')+', '+fe[1]+(artsOn?', '+artsOn:'')+', '+QT;
+      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+      if(src)done.push({k:fe[0],src});
+    }catch(e){}
+  }
+  out.innerHTML='';
+  if(!done.length){out.innerHTML='<div style="font-size:12px;color:var(--danger)">一张都没出来，检查下接口和额度</div>';return;}
+  const grid=document.createElement('div');grid.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:340px;margin:0 auto';
+  done.forEach(d=>{
+    const box=document.createElement('div');
+    const im=document.createElement('img');im.src=d.src;im.style.cssText='width:100%;border-radius:12px;cursor:zoom-in;background:var(--hover)';
+    im.onclick=()=>window.open(d.src,'_blank');
+    const lab=document.createElement('div');lab.style.cssText='font-size:11px;color:var(--muted);margin-top:2px';lab.textContent=d.k;
+    box.appendChild(im);box.appendChild(lab);grid.appendChild(box);
+  });
+  out.appendChild(grid);
+};
+
 /* ---- 合拍工坊 ---- */
 function ocChipRow(boxId,cur,set){
   const box=$(boxId);box.innerHTML='';
@@ -4900,6 +4997,7 @@ function ocChipRow(boxId,cur,set){
 function ocRenderShoot(){
   ocChipRow('#ocSA',ocShootA,x=>ocShootA=x);
   ocChipRow('#ocSB',ocShootB,x=>ocShootB=x);
+  ocChipRow('#ocFE',ocShootFE,x=>ocShootFE=x);
 }
 [['exp2','双人表情'],['pos2','双人姿势'],['exp1','表情'],['pos1','姿势'],['style','画风'],['filter','滤镜'],['cloth','服装'],['acc','配饰'],['hair','发型']].forEach(pair=>{
   const b=document.createElement('button');b.type='button';b.className='oc-chip';b.textContent='+'+pair[1];
