@@ -832,6 +832,9 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button class="mini" id="vDownload">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14"/></svg>保存到相册
       </button>
+      <button class="mini" id="vFace">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c1.2-3.2 3.8-5 7-5s5.8 1.8 7 5"/></svg>设为OC形象
+      </button>
       <button class="mini" id="vStyle">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18h1.6a2 2 0 0 0 1.4-3.4c-.8-.8-.2-2.1.9-2.1H19a2.5 2.5 0 0 0 2.5-2.5C21.5 7 17.2 3 12 3z"/></svg>设为专属画风
       </button>
@@ -1217,7 +1220,7 @@ function msgEl(m){
     if(!imgs.length)inner+=`<div style="font-size:12.5px;color:var(--muted);padding:6px 0">[图片已清理：本机存储空间不足]</div>`;
     if(m.text)inner+=`<div>${esc(m.text)}</div>`;
     if(m.en)inner+=`<div class="en-line">EN · ${esc(m.en)}</div>`;
-    if(m.prompt)inner+=`<div class="img-acts"><button data-a="same">同款 · 再来几张</button><button data-a="vary">以这张出变体</button></div>`;
+    if(m.prompt)inner+=`<div class="img-acts"><button data-a="same">同款 · 再来几张</button><button data-a="vary">以这张出变体</button><button data-a="face">设为OC形象</button></div>`;
     if(m.prompt||m.en)inner+=`<div class="pp-chip" data-pp="1">查看 / 复制提示词</div>`;
   }else{
     inner+=`<div>${esc(m.text)}</div>`;
@@ -1233,6 +1236,7 @@ function msgEl(m){
   if(pp)pp.onclick=e=>{e.stopPropagation();showPromptOv(m);};
   const actSame=div.querySelector('[data-a=same]');if(actSame)actSame.onclick=e=>{e.stopPropagation();replayMsg(m,false);};
   const actVary=div.querySelector('[data-a=vary]');if(actVary)actVary.onclick=e=>{e.stopPropagation();replayMsg(m,true);};
+  const actFace=div.querySelector('[data-a=face]');if(actFace)actFace.onclick=e=>{e.stopPropagation();const f=div.querySelector('img.gen');if(f)setImgAsFace(f.src);};
   bindPress(div,()=>sheetFor(m));
   return div;
 }
@@ -4950,6 +4954,36 @@ $('#ocShootGo').onclick=async()=>{
   }catch(e){toast('合照失败：'+String(e&&e.message||e).slice(0,60));}
   btn.textContent='📷 生成合照';
 };
+
+/* ---- 生成图设为 OC/用户人设形象 ---- */
+async function setImgAsFace(src){
+  const cards=ocCards();
+  if(!cards.length)return toast('先去 OC 里世界（+号面板）建角色');
+  let s=src;
+  try{if(String(s).startsWith('@idb:'))s=await idbGet(String(s).slice(5));}catch(e){}
+  if(!s)return toast('图片读取失败');
+  openSheet('设为谁的形象？',[]);
+  const sb=$('#sheetItems');sb.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='2px 4px 10px';
+  const meId=S.ocMe&&S.ocMe.id;
+  const list=cards.slice().sort((a,b)=>(a.id===meId?0:1)-(b.id===meId?0:1));
+  list.forEach(c=>{
+    const b=document.createElement('button');b.className='oc-card';b.type='button';
+    b.innerHTML='<span class="oc-ava">'+ocAvaHtml(c)+'</span><span style="flex:1;min-width:0"><b style="font-size:14px">'+esc(c.name)+'</b><span style="display:block;font-size:11px;color:var(--muted)">'+(c.id===meId?'我的人设卡':'OC'+(c.img?' · 已有形象，将替换':''))+'</span></span>';
+    b.onclick=async()=>{
+      try{
+        const th=await shrinkImg(s,128,.82);
+        if(c.id===meId&&S.ocMe){S.ocMe.img=th;store.set('xy_ocme',S.ocMe);}
+        else{S.ocs=S.ocs.map(o=>o.id===c.id?Object.assign({},o,{img:th}):o);persist('xy_ocs',S.ocs,false);}
+        closeOverlays();toast('已设为「'+c.name+'」的形象');
+        if($('#ocOv').classList.contains('show'))ocRenderArch();
+      }catch(e){toast('设置失败：'+String(e&&e.message||e).slice(0,60));}
+    };
+    wrap.appendChild(b);
+  });
+  sb.appendChild(wrap);
+}
+$('#vFace').onclick=()=>setImgAsFace(S.viewerSrc);
 
 /* ================= 开场动画 ================= */
 const splash=$('#splash');
