@@ -2105,9 +2105,17 @@ const ARTIST_LIB=[
   {c:'male',n:'mohao',s:'artist:mohao',d:'小众国风男，仙侠气'},
   {c:'male',n:'tef',s:'artist:tef',d:'小众厚涂，氛围扎实'},
   {c:'male',n:'bun150',s:'artist:bun150',d:'小众少年感，元气清爽'},
+  {c:'male',n:'omutatsu',s:'artist:omutatsu',d:'梦幻朦胧，光影如雾'},
+  {c:'male',n:'salvador dali',s:'artist:salvador dali',d:'达利本尊，超现实梦境'},
+  {c:'male',n:'rene magritte',s:'artist:rene magritte',d:'马格里特，超现实错位'},
+  {c:'male',n:'m. c. escher',s:'artist:m. c. escher',d:'埃舍尔，不可能空间'},
+  {c:'male',n:'kkmir',s:'artist:kkmir',d:'超现实水感，异色氛围'},
   {c:'combo',n:'美少年精工组',s:'artist:ibu-chuan, artist:hiyaco, artist:dsmile',d:'精致五官三连，清透质感'},
   {c:'combo',n:'厚涂酷男组',s:'artist:sheya, artist:tef, artist:coreless',d:'光影张力组，酷感拉满'},
   {c:'combo',n:'国风侠客男',s:'artist:mohao, artist:guweiz',d:'古韵仙侠，电影感'},
+  {c:'combo',n:'梦核男',s:'artist:omutatsu, weirdcore, dreamy',d:'朦胧梦境感男生'},
+  {c:'combo',n:'超现实艺术馆',s:'artist:salvador dali, artist:rene magritte, surreal',d:'大师级错位梦境'},
+  {c:'combo',n:'不可能空间',s:'artist:m. c. escher, optical illusion, geometric',d:'埃舍尔式眩晕构图'},
   {c:'combo',n:'小众伪厚涂男',s:'artist:896, artist:rezi, artist:funge',d:'腰部画师叠涂，笔触厚而不糊'},
   {c:'combo',n:'清俊笔触男',s:'artist:ranru, artist:hejinhy, artist:piyotype',d:'细腻小众组，柔光清冷'},
   {c:'combo',n:'华丽暗黑厚涂',s:'artist:huahua025, artist:896',d:'华服暗调，收藏级质感'},
@@ -2130,6 +2138,9 @@ const ARTIST_LIB=[
   {c:'style',n:'暗黑哥特',s:'gothic, dark fantasy, dramatic shadows'},
   {c:'style',n:'星空宇宙',s:'space, starry sky, nebula, deep color'},
   {c:'style',n:'精灵秘境',s:'fantasy, ethereal, light particles'},
+  {c:'style',n:'梦核怪诞',s:'weirdcore, dreamcore, surreal, eyestrain'},
+  {c:'style',n:'超现实错位',s:'surreal, floating object, optical illusion'},
+  {c:'style',n:'朦胧重曝',s:'double exposure, translucent, dreamy'},
   /* ---- 漫截画风 ---- */
   {c:'style',n:'90s 漫截风',s:'1990s \\(style\\), retro artstyle, anime screencap, film grain'},
   {c:'style',n:'黑白漫画分镜',s:'monochrome, manga panel, screentone, halftone, ink illustration'},
@@ -2194,6 +2205,7 @@ const ARTIST_LIB=[
   {c:'shot',n:'鱼眼畸变',s:'fisheye lens, barrel distortion'},
   {c:'shot',n:'背光剪影',s:'silhouette, backlit, dark figure'},
   {c:'shot',n:'面对镜头',s:'looking at viewer, direct gaze'},
+  {c:'shot',n:'梦中虚焦',s:'soft focus, out of focus, hazy'},
   /* ---- 光影氛围 ---- */
   {c:'mood',n:'电影感',s:'cinematic lighting, film still, dramatic composition'},
   {c:'mood',n:'黄金时刻',s:'golden hour, warm sunlight, long shadows'},
@@ -2209,6 +2221,9 @@ const ARTIST_LIB=[
   {c:'mood',n:'水下光斑',s:'underwater, caustics, floating bubbles'},
   {c:'mood',n:'薄雾弥漫',s:'fog, misty atmosphere, haze'},
   {c:'mood',n:'舞台聚光',s:'stage lighting, spotlight, dark background'},
+  {c:'mood',n:'白日梦光',s:'sunbeam, light particles, overexposed'},
+  {c:'mood',n:'午夜幻紫',s:'purple theme, glow, night'},
+  {c:'mood',n:'失真眩晕',s:'distortion, wavy, blurry'},
   /* ---- 画质前缀 ---- */
   {c:'quality',n:'神级质量',s:'masterpiece, best quality, absurdres, ultra-detailed'},
   {c:'quality',n:'高清大图',s:'highres, extremely detailed cg, 8k wallpaper'},
@@ -2266,6 +2281,8 @@ const ARTIST_LIB=[
   {c:'exp1',n:'狂喜睁大',s:'sparkling eyes, open mouth, excited'},
   {c:'exp1',n:'抿嘴微笑',s:'closed mouth, smile'},
   {c:'exp1',n:'挑眉坏笑',s:'raised eyebrow, smirk'},
+  {c:'exp1',n:'空洞凝视',s:'empty eyes, staring at viewer, bags under eyes'},
+  {c:'exp1',n:'悬浮失神',s:'expressionless, empty eyes, floating hair'},
   /* ---- 双人表情 ---- */
   {c:'exp2',n:'深情对视',s:'eye contact, face-to-face, smile'},
   {c:'exp2',n:'贴脸',s:'cheek to cheek, smiling, blush'},
@@ -2323,6 +2340,8 @@ const ARTIST_LIB=[
   {c:'pos1',n:'举双臂',s:'raised arms, v'},
   {c:'pos1',n:'招手过来',s:'come hither, beckoning, smile'},
   {c:'pos1',n:'背手',s:'arms behind back, standing'},
+  {c:'pos1',n:'悬浮失重',s:'floating, outstretched arms'},
+  {c:'pos1',n:'抱膝漂浮',s:'hugging own legs, floating'},
   {c:'pos1',n:'跪着',s:'kneeling'},
   {c:'pos1',n:'俯身向前',s:'leaning forward'},
   {c:'pos1',n:'拨头发',s:'hand in own hair'},
@@ -2484,6 +2503,9 @@ const ARTIST_LIB=[
   {c:'filter',n:'镭射幻彩',s:'hologram',d:'镭射反光，Y2K 未来感'},
   {c:'filter',n:'拍立得',s:'polaroid',d:'白框相纸，随拍氛围'},
   {c:'filter',n:'鱼眼街拍',s:'fisheye',d:'鱼眼镜头，街头杂志感'},
+  {c:'filter',n:'旧录像带',s:'scanlines, retro colors',d:'扫描线噪点，老录像带'},
+  {c:'filter',n:'过曝白梦',s:'overexposed, white theme, glow',d:'惨白过曝，空灵梦境'},
+  {c:'filter',n:'紫雾迷幻',s:'purple theme, fog, glowing',d:'紫雾弥漫，迷幻氛围'},
 ];
 const LIB_CATS=[['mine','我的串'],['combo','爆款组合'],['artist','人气画师'],['male','男生画师'],['unisex','男女通用'],['retro','复古古早'],['style','漫截画风'],['shot','镜头构图'],['mood','光影氛围'],['quality','画质前缀'],['exp1','单人表情'],['exp2','双人表情'],['pos1','单人姿势'],['pos2','双人姿势'],['hair','发型'],['cloth','服装'],['acc','配饰'],['filter','滤镜']];
 let libTab='combo',libQ='';
