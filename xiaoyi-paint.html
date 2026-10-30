@@ -460,6 +460,20 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .labmsg .labcard{margin:0;}
 .labmsg .labgrid{padding:10px 0 4px;}
 #labSubject{margin-top:8px;}
+/* ===== OC 里世界 ===== */
+.oc-card{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:10px 12px;margin-bottom:8px;cursor:pointer;width:100%;text-align:left}
+.oc-card:active{background:var(--hover)}
+.oc-ava{width:46px;height:46px;border-radius:14px;background:var(--elev);border:1px solid var(--rule);flex:0 0 auto;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--muted)}
+.oc-ava img{width:100%;height:100%;object-fit:cover}
+.oc-m{display:flex;gap:8px;margin-bottom:12px;align-items:flex-start}
+.oc-m.me{flex-direction:row-reverse}
+.oc-m .oc-ava{width:34px;height:34px;border-radius:11px;font-size:14px}
+.oc-b{max-width:76%;background:var(--bubble-ai);border:1px solid var(--rule);border-radius:14px;border-top-left-radius:5px;padding:8px 12px;font-size:13.5px;word-break:break-word;white-space:pre-wrap;display:inline-block}
+.oc-m.me .oc-b{background:var(--bubble-me);color:var(--bubble-me-ink);border:0;border-top-left-radius:14px;border-top-right-radius:5px}
+.oc-n{font-size:11px;color:var(--muted);margin:0 4px 3px;display:block}
+.oc-chip{font-size:12px;padding:5px 12px;border-radius:999px;border:1px solid var(--rule2);background:transparent;color:var(--muted);flex:0 0 auto;transition:all .15s ease}
+.oc-chip.on{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.oc-img{display:block;max-width:min(220px,60vw);border-radius:12px;margin-top:5px;cursor:zoom-in;background:var(--hover)}
 </style>
 </head>
 <body>
@@ -641,6 +655,15 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
               </button>
             </div>
           </div>
+          <div class="field">
+            <label>OC 模型 <span style="color:var(--faint)">（可选 · OC 里世界角色互动专用，选个会聊天的对话模型）</span></label>
+            <div class="in-wrap">
+              <input id="fOc" placeholder="留空=OC 剧场用不了；如 gpt-4o-mini / gemini flash…" autocapitalize="off">
+              <button class="mini" id="btnOcPick" type="button" style="flex:0 0 auto;padding:6px 10px" title="选择OC模型">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></svg>
+              </button>
+            </div>
+          </div>
           <div class="acts">
             <button class="mini pri" id="btnSave">保存配置</button>
             <button class="mini" id="btnTest">
@@ -721,6 +744,40 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
     <div id="libStore" style="padding:0 16px 8px;flex:0 0 auto;font-size:10.5px;color:var(--faint)"></div>
     <div id="libTabs" style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;flex:0 0 auto"></div>
     <div id="libList" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
+  </div></div>
+  <div class="overlay" id="ocOv"><div style="height:100%;display:flex;flex-direction:column">
+    <div class="hdr">
+      <button class="icon-btn" id="ocBack" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div style="min-width:0"><div class="title">OC 里世界</div><div class="sub">造角色 · 群聊 · 合拍</div></div>
+      <div class="spacer"></div>
+    </div>
+    <div class="m-tabs" style="padding:10px 16px 6px;flex:0 0 auto">
+      <button class="mtab on" data-oct="arch">档案馆</button>
+      <button class="mtab" data-oct="chat">群聊剧场</button>
+      <button class="mtab" data-oct="shoot">合拍工坊</button>
+    </div>
+    <div id="ocArch" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
+    <div id="ocChat" style="display:none;flex:1;min-height:0;flex-direction:column">
+      <div id="ocMems" style="display:flex;gap:6px;overflow-x:auto;padding:8px 16px 6px;flex:0 0 auto"></div>
+      <div id="ocFlow" style="flex:1;overflow-y:auto;padding:4px 16px 10px;min-height:0"></div>
+      <div style="display:flex;gap:7px;padding:8px 12px 12px;border-top:1px solid var(--rule);flex:0 0 auto;align-items:center">
+        <input id="ocIn" placeholder="说话（以你的人设卡身份）" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:14px;padding:10px 14px;font-size:13.5px;color:var(--ink);outline:none" autocapitalize="off">
+        <button class="oc-chip on" id="ocSend" type="button" style="padding:9px 14px">发</button>
+        <button class="oc-chip" id="ocAuto" type="button" style="padding:9px 12px;flex:0 0 auto">让他们聊</button>
+        <button class="oc-chip" id="ocSelfieBtn" type="button" style="padding:9px 12px;flex:0 0 auto">📸</button>
+      </div>
+    </div>
+    <div id="ocShoot" style="display:none;flex:1;overflow-y:auto;padding:10px 16px 20px">
+      <div class="field"><label>角色 A（主角，必选）</label><div id="ocSA" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="field"><label>角色 B（合照对象，留空=solo 单人）</label><div id="ocSB" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="field"><label>表情 / 姿势 / 画风 / 滤镜词</label>
+        <textarea id="ocW" rows="2" placeholder="英文 tag，逗号分隔。例：hug, heart-shaped pupils, neon trim" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" id="ocWChips"></div>
+      </div>
+      <button class="oc-chip on" id="ocShootGo" type="button" style="width:100%;padding:11px">📷 生成合照</button>
+      <div id="ocShootOut" style="padding:12px 0 0;text-align:center"></div>
+      <div style="font-size:11px;color:var(--faint);padding-top:8px;line-height:1.6">双人自动组人数 tag（2boys / 1boy 1girl…）；画风自动带当前启用的画师串；表情姿势词从词库点选。</div>
+    </div>
   </div></div>
   <div class="overlay center" id="impOv"><div class="modal" style="width:min(92%,440px);max-height:84%;overflow:auto;text-align:left">
     <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1291,7 +1348,7 @@ function openSheet(title,items){
 }
 let ovHist=false;
 function ovOpen(){if(!ovHist){ovHist=true;try{history.pushState({xyov:1},'');}catch(e){}}}
-function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');if(ovHist){ovHist=false;try{history.back();}catch(e){}}}
+function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv,#ocOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');if(ovHist){ovHist=false;try{history.back();}catch(e){}}}
 window.addEventListener('popstate',()=>{if(ovHist){ovHist=false;closeOverlays();}});
 $$('.ov-x').forEach(b=>b.onclick=()=>closeOverlays());
 $$('#sheetOv,#modalOv,#recipeOv,#pvOv').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeOverlays();}));
@@ -3557,6 +3614,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'通配符词表（__随机换词__）',fn:openWilds},
     {icon:'redo',txt:'批量抽卡（变量轮换出整套）',fn:openBatch},
     {icon:'dice',txt:'随机灵感（摇一下直接画）',fn:rollDice},
+    {icon:'brush',txt:'OC 里世界（角色互动剧场）',fn:openOcWorld},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
   ]);
 };
@@ -4266,6 +4324,7 @@ function fillForm(p){
   $('#fKey').value=p?.key||'';
   $('#fModel').value=p?.model||'';
   $('#fChat').value=p?.chatModel||'';
+  $('#fOc').value=p?.ocModel||'';
   editModels=(p?.models||[]).slice();
   $('#btnDel').style.display=p?'inline-flex':'none';
   $('#testOut').innerHTML='';
@@ -4281,6 +4340,7 @@ function collectForm(){
     baseUrl,key:$('#fKey').value.trim(),
     model:$('#fModel').value.trim(),
     chatModel:$('#fChat').value.trim(),
+    ocModel:$('#fOc').value.trim(),
     models:editModels.slice()
   };
 }
@@ -4397,6 +4457,7 @@ $('#btnModels').onclick=async()=>{
 };
 $('#btnModelPick').onclick=()=>openModelPicker('#fModel','绘画模型');
 $('#btnChatPick').onclick=()=>openModelPicker('#fChat','理解模型','chat');
+$('#btnOcPick').onclick=()=>openModelPicker('#fOc','OC 模型','chat');
 $('#btnTest').onclick=async()=>{
   const p=collectForm();if(!p)return;
   if(!p.model){toast('请先选择绘画模型');return;}
@@ -4603,6 +4664,293 @@ if(location.protocol==='file:'){try{
   const at=document.createElement('link');at.rel='apple-touch-icon';at.href=makeIcon(180);
   document.head.appendChild(at);
 }catch(e){}}
+/* ================= OC 里世界：档案馆 + 群聊剧场 + 合拍工坊 ================= */
+S.ocs=store.get('xy_ocs',[]);
+S.ocMe=store.get('xy_ocme',null);
+S.ocMsgs=store.get('xy_ocmsgs',[]);
+let ocTab='arch',ocSel=[],ocShootA=null,ocShootB=null,ocBusy=false;
+const ocSaveCards=()=>{persist('xy_ocs',S.ocs,false);store.set('xy_ocme',S.ocMe);};
+const ocSaveMsgs=()=>persist('xy_ocmsgs',S.ocMsgs,false);
+function ocCards(){return (S.ocMe?[S.ocMe]:[]).concat(S.ocs);}
+function ocById(id){return ocCards().find(c=>c&&c.id===id);}
+function ocAvaHtml(c){return c&&c.img?'<img src="'+esc(c.img)+'" loading="lazy">':esc((c&&c.name||'?').slice(0,1));}
+function openOcWorld(){$('#ocIn').value='';ocSetTab('arch');ovOpen();$('#ocOv').classList.add('show');}
+function ocSetTab(t){
+  ocTab=t;
+  $$('#ocOv [data-oct]').forEach(b=>b.classList.toggle('on',b.dataset.oct===t));
+  $('#ocArch').style.display=t==='arch'?'':'none';
+  $('#ocChat').style.display=t==='chat'?'flex':'none';
+  $('#ocShoot').style.display=t==='shoot'?'block':'none';
+  if(t==='arch')ocRenderArch();
+  if(t==='chat'){ocRenderMems();ocRenderFlow();}
+  if(t==='shoot')ocRenderShoot();
+}
+$$('#ocOv [data-oct]').forEach(b=>b.onclick=()=>ocSetTab(b.dataset.oct));
+$('#ocBack').onclick=()=>closeOverlays();
+
+/* ---- 档案馆 ---- */
+function ocRenderArch(){
+  const box=$('#ocArch');box.innerHTML='';
+  const me=document.createElement('button');me.className='oc-card';me.type='button';
+  me.innerHTML='<span class="oc-ava">'+ocAvaHtml(S.ocMe)+'</span><span style="flex:1;min-width:0"><b style="font-size:14px">'+esc(S.ocMe?S.ocMe.name:'我的人设卡')+'</b><span style="display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(S.ocMe?(S.ocMe.persona||'点开补人设'):'创建你自己的卡，以真身进群和 OC 互动')+'</span></span>';
+  me.onclick=()=>ocEdit('me');
+  box.appendChild(me);
+  if(!S.ocs.length){
+    const e=document.createElement('div');e.style.cssText='font-size:12px;color:var(--faint);padding:12px 4px;line-height:1.7';
+    e.textContent='还没有 OC。点下面「新建 OC」造一个：填人设和外貌词，当场画头像，还能给 OC 之间拉关系线。';box.appendChild(e);
+  }
+  S.ocs.forEach(c=>{
+    const b=document.createElement('button');b.className='oc-card';b.type='button';
+    const relN=c.rels?Object.keys(c.rels).length:0;
+    b.innerHTML='<span class="oc-ava">'+ocAvaHtml(c)+'</span><span style="flex:1;min-width:0"><b style="font-size:14px">'+esc(c.name)+'</b><span style="display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.persona||'还没写人设')+'</span><span style="font-size:10.5px;color:var(--faint)">'+(c.gender==='f'?'女':'男')+(relN?' · '+relN+' 条关系':'')+'</span></span>';
+    b.onclick=()=>ocEdit(c.id);
+    box.appendChild(b);
+  });
+  const add=document.createElement('button');add.className='oc-chip on';add.type='button';add.style.cssText='width:100%;padding:10px;margin-top:4px';add.textContent='+ 新建 OC';
+  add.onclick=()=>ocEdit(null);box.appendChild(add);
+  const tip=document.createElement('div');tip.style.cssText='font-size:11px;color:var(--faint);padding:10px 2px;line-height:1.6';
+  tip.textContent='外貌词用英文 danbooru tag（如 white hair, hoodie）。群聊前记得去「配置」页把「OC 模型」填上。';box.appendChild(tip);
+}
+function ocEdit(id){
+  const isMe=id==='me';
+  const card=isMe?S.ocMe:(id?ocById(id):null);
+  const isNew=!card;
+  const c=card?JSON.parse(JSON.stringify(card)):{id:uid(),name:'',persona:'',tags:'',img:null,gender:'m',rels:{}};
+  openSheet(isMe?(isNew?'创建我的人设卡':'编辑我的人设卡'):(isNew?'新建 OC':'编辑：'+c.name),[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const w=document.createElement('div');w.style.padding='2px 4px 8px';
+  w.innerHTML='<div class="field"><label>名字</label><input id="ocN" value="'+esc(c.name)+'" placeholder="叫什么" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:13px;outline:none;color:var(--ink)"></div>'
+   +'<div class="field"><label>性别（合拍组人数 tag 用）</label><select id="ocG" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:13px;outline:none;color:var(--ink)"><option value="m"'+(c.gender!=='f'?' selected':'')+'>男</option><option value="f"'+(c.gender==='f'?' selected':'')+'>女</option></select></div>'
+   +'<div class="field"><label>人设（性格/背景/说话风格，聊天就按这个演）</label><textarea id="ocP" rows="4" placeholder="例：表面高冷话少，其实护短；熬夜冠军；说话短，爱用省略号…" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">'+esc(c.persona)+'</textarea></div>'
+   +'<div class="field"><label>外貌 tag（英文 danbooru，画头像和合照直接用）</label><textarea id="ocT" rows="3" placeholder="例：white hair, blue eyes, hoodie, chain" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">'+esc(c.tags)+'</textarea>'
+   +'<div style="display:flex;gap:6px;margin-top:6px"><button class="oc-chip" id="ocAvaBtn" type="button">🎨 画头像</button><button class="oc-chip" id="ocAvaRnd" type="button">从词库拼外貌</button></div></div>'
+   +'<div class="field"><label>和其他 OC 的关系（留空=没关系）</label><div id="ocRels"></div></div>'
+   +'<div style="display:flex;gap:8px;padding:4px 0 2px"><button class="oc-chip on" id="ocSave" type="button" style="flex:1;padding:10px">保存</button>'
+   +(id&&!isMe?'<button class="oc-chip" id="ocDel" type="button" style="padding:10px;color:var(--danger)">删除</button>':'')+'</div>';
+  box.appendChild(w);
+  const rw=w.querySelector('#ocRels');
+  S.ocs.filter(o=>o.id!==c.id).forEach(o=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+    const lb=document.createElement('span');lb.style.cssText='font-size:12px;color:var(--muted);flex:0 0 auto';lb.textContent=o.name;
+    const inp=document.createElement('input');inp.style.cssText='flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--ink);outline:none';
+    inp.placeholder='如：死对头 / 发小 / 暗恋';inp.value=(c.rels&&c.rels[o.id])||'';inp.dataset.rid=o.id;
+    row.appendChild(lb);row.appendChild(inp);rw.appendChild(row);
+  });
+  if(!rw.children.length)rw.innerHTML='<div style="font-size:11.5px;color:var(--faint)">先多建几个 OC，再来拉关系线</div>';
+  w.querySelector('#ocAvaRnd').onclick=()=>{ // 现有词库词条快速拼外貌：发型+服装+配饰各挑一个
+    const pick=cat=>{const l=ARTIST_LIB.filter(it=>it.c===cat);return l.length?l[Math.floor(Math.random()*l.length)].s:'';};
+    const cur=w.querySelector('#ocT').value.trim();
+    const add2=[pick('hair'),pick('cloth'),pick('acc')].filter(Boolean);
+    w.querySelector('#ocT').value=cur?cur+', '+add2.join(', '):add2.join(', ');
+    toast('已从词库随机拼一组外貌，可再手改');
+  };
+  w.querySelector('#ocAvaBtn').onclick=async()=>{
+    const tags=w.querySelector('#ocT').value.trim();
+    if(!tags)return toast('先填外貌 tag 再画头像');
+    const p=activePreset();if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+    const btn=w.querySelector('#ocAvaBtn');btn.textContent='画头像中…';
+    try{
+      const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+      const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, portrait, upper body, looking at viewer, simple background, '+tags+(isNai?', very aesthetic, masterpiece, no text':', best quality, absurdres'),size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+      if(!src){toast('接口没返回图片');btn.textContent='🎨 画头像';return;}
+      c.img=await shrinkImg(src,128,.82); // 缩图存卡上，体积小直接进 localStorage
+      btn.textContent='✅ 重画头像';toast('头像画好了，记得点保存');
+    }catch(e){toast('画头像失败：'+String(e&&e.message||e).slice(0,60));btn.textContent='🎨 画头像';}
+  };
+  w.querySelector('#ocSave').onclick=()=>{
+    c.name=w.querySelector('#ocN').value.trim();
+    if(!c.name)return toast('名字不能为空');
+    c.gender=w.querySelector('#ocG').value;
+    c.persona=w.querySelector('#ocP').value.trim();
+    c.tags=w.querySelector('#ocT').value.trim();
+    c.rels=c.rels||{};
+    $$('#ocRels input').forEach(i=>{const v=i.value.trim();if(v)c.rels[i.dataset.rid]=v;else delete c.rels[i.dataset.rid];});
+    if(isMe)S.ocMe=c;
+    else if(isNew)S.ocs.push(c);
+    else S.ocs=S.ocs.map(o=>o.id===c.id?c:o);
+    ocSaveCards();closeOverlays();ocRenderArch();toast('已保存');
+  };
+  const del=w.querySelector('#ocDel');
+  if(del)del.onclick=()=>askConfirm('删除 OC','删掉「'+c.name+'」？聊天记录里 TA 的消息会留着',()=>{
+    S.ocs=S.ocs.filter(o=>o.id!==c.id);
+    if(ocSel.includes(c.id))ocSel=ocSel.filter(x=>x!==c.id);
+    if(ocShootA&&ocShootA.id===c.id)ocShootA=null;
+    if(ocShootB&&ocShootB.id===c.id)ocShootB=null;
+    ocSaveCards();closeOverlays();ocRenderArch();
+  });
+}
+
+/* ---- 群聊剧场 ---- */
+function ocRenderMems(){
+  const box=$('#ocMems');box.innerHTML='';
+  const cards=ocCards();
+  if(!ocSel.length)ocSel=cards.map(x=>x.id);
+  if(!cards.length){box.innerHTML='<span style="font-size:11.5px;color:var(--faint)">先去档案馆建卡</span>';return;}
+  cards.forEach(x=>{
+    const b=document.createElement('button');b.type='button';b.className='oc-chip'+(ocSel.includes(x.id)?' on':'');b.textContent=x.name;
+    b.onclick=()=>{ocSel=ocSel.includes(x.id)?ocSel.filter(v=>v!==x.id):ocSel.concat(x.id);ocRenderMems();};
+    box.appendChild(b);
+  });
+}
+function ocRenderFlow(){
+  const f=$('#ocFlow');f.innerHTML='';
+  if(!S.ocMsgs.length){
+    const e=document.createElement('div');e.style.cssText='font-size:12px;color:var(--faint);padding:18px 4px;line-height:1.7';
+    e.textContent='上方勾选出场成员 → 你说句话开场，或点「让他们聊」看 OC 自己演。台词走「OC 模型」。📸=让某个成员发张自拍。';f.appendChild(e);
+  }
+  S.ocMsgs.forEach(m=>{
+    const c=m.who==='me'||m.who==='sys'?null:ocById(m.who);
+    const row=document.createElement('div');row.className='oc-m'+(m.who==='me'?' me':'');
+    row.innerHTML='<span class="oc-ava">'+(c?ocAvaHtml(c):(m.who==='sys'?'📢':'🙋'))+'</span><span style="min-width:0;max-width:86%"><span class="oc-n">'+esc(m.n||'')+'</span><span class="oc-b">'+esc(m.t||'')+(m.img?'<img class="oc-img" src="'+esc(m.img)+'">':'')+'</span></span>';
+    f.appendChild(row);
+  });
+  f.scrollTop=f.scrollHeight;
+}
+function ocSysPrompt(){
+  const cards=ocSel.map(ocById).filter(Boolean);
+  const parts=cards.map(x=>'- '+x.name+'（'+(x.gender==='f'?'女':'男')+'）：'+(x.persona||'（人设待补）')+(x.tags?'\n  外貌：'+x.tags:''));
+  const rels=[];
+  cards.forEach(x=>{if(x.rels)for(const k in x.rels){const o=ocById(k);if(o&&cards.some(v=>v.id===k))rels.push(x.name+' 和 '+o.name+' 是'+x.rels[k]);}});
+  return ['你在驱动一个文字群聊模拟器，让下面的角色以真实人类的方式聊天，每次挑 1~2 个角色发言。',
+    '铁律：1.所有角色都是真实人类，绝不暴露或暗示AI身份，禁止「作为AI」类表述；2.说话短、口语化，像真人打字：一两句话，语气词、吐槽、敷衍、接梗都行，禁止书面腔总结腔；3.严格贴合角色卡，禁止OOC，禁止一个角色替另一个说话；4.思维举止符合现实生活逻辑，禁止夸张戏剧化超现实展开；5.遵守关系设定。',
+    '【群成员】\n'+parts.join('\n'),
+    rels.length?'【关系】'+rels.join('；'):'',
+    '【输出格式】只输出 JSON 数组：[{"name":"角色名","t":"台词"}]，最多2条，每条不超过40字，禁止输出任何其他内容。'].filter(Boolean).join('\n');
+}
+async function ocTurn(auto){
+  const p=activePreset();
+  if(!p||!p.ocModel)return toast('先去「配置」页填「OC 模型」（会聊天的对话模型就行）');
+  if(ocSel.filter(id=>id!=='me').length<1&&!ocCards().some(x=>x.id!==(S.ocMe&&S.ocMe.id)))return toast('先去档案馆建 OC');
+  ocBusy=true;$('#ocAuto').textContent='打字中…';
+  const hist=S.ocMsgs.slice(-20).map(m=>m.n+'：'+(m.t||'[图片]')).join('\n')||'（群刚开，还没有消息）';
+  try{
+    const r=await fetch(apiRoot(p.baseUrl)+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.ocModel,messages:[{role:'system',content:ocSysPrompt()},{role:'user',content:(auto?'（角色们自己接着往下聊，自然接梗）\n':'（「我」刚刚发了消息，角色们看着回）\n')+'最近群聊：\n'+hist}],temperature:0.95,max_tokens:400})});
+    if(!r.ok)throw new Error('http '+r.status);
+    const j=await r.json();
+    const txt=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'').trim();
+    let says=null;
+    const mm=txt.match(/\[[\s\S]*\]/);
+    if(mm){try{says=JSON.parse(mm[0]);}catch(e){}}
+    if(!Array.isArray(says)||!says.length){
+      const first=S.ocs.filter(x=>ocSel.includes(x.id))[0]||S.ocs[0];
+      if(!first||!txt)throw new Error('模型没返回台词');
+      says=[{name:first.name,t:txt.slice(0,120)}];
+    }
+    says.slice(0,2).forEach(s=>{
+      const c=S.ocs.find(x=>x.name===s.name)||S.ocs.find(x=>ocSel.includes(x.id))||S.ocs[0];
+      if(!c||!s.t)return;
+      S.ocMsgs.push({who:c.id,n:c.name,t:String(s.t).slice(0,200),ts:Date.now()});
+    });
+    ocSaveMsgs();ocRenderFlow();
+  }catch(e){toast('OC 打字失败：'+String(e&&e.message||e).slice(0,60));}
+  ocBusy=false;$('#ocAuto').textContent='让他们聊';
+}
+$('#ocSend').onclick=async()=>{
+  const t=$('#ocIn').value.trim();if(!t)return;
+  if(!S.ocMe)return toast('先去档案馆建「我的人设卡」再开口');
+  if(ocBusy)return toast('OC 们正在打字…');
+  S.ocMsgs.push({who:'me',n:S.ocMe.name,t,ts:Date.now()});
+  $('#ocIn').value='';ocSaveMsgs();ocRenderFlow();
+  await ocTurn(false);
+};
+$('#ocIn').addEventListener('keydown',e=>{if(e.key==='Enter'){$('#ocSend').click();}});
+$('#ocAuto').onclick=async()=>{
+  if(ocBusy)return toast('OC 们正在打字…');
+  if(!S.ocs.length)return toast('先去档案馆建 OC');
+  await ocTurn(true);
+};
+$('#ocSelfieBtn').onclick=()=>{
+  const cands=ocSel.map(ocById).filter(Boolean);
+  if(!cands.length)return toast('先在上方勾选成员');
+  openSheet('谁来发自拍？',cands.map(x=>({icon:'quote',txt:x.name+(x.id===(S.ocMe&&S.ocMe.id)?'（我）':''),fn:()=>{closeOverlays();ocSelfie(x);}})));
+};
+async function ocSelfie(c){
+  const p=activePreset();
+  if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  if(c.id===(S.ocMe&&S.ocMe.id)&&!c.tags)return toast('你的人设卡还没填外貌 tag');
+  toast(c.name+' 正在自拍…');
+  try{
+    const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+    const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, absurdres';
+    const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, selfie, upper body, looking at viewer, '+(c.tags||'')+', '+QT,size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+    if(!src)return toast('接口没返回图片');
+    const th=await shrinkImg(src,160,.75);
+    S.ocMsgs.push({who:c.id,n:c.name,t:'📸（发了一张自拍）',img:th,ts:Date.now()});
+    ocSaveMsgs();ocRenderFlow();
+  }catch(e){toast('自拍失败：'+String(e&&e.message||e).slice(0,60));}
+}
+
+/* ---- 合拍工坊 ---- */
+function ocChipRow(boxId,cur,set){
+  const box=$(boxId);box.innerHTML='';
+  const cards=ocCards();
+  if(!cards.length){box.innerHTML='<span style="font-size:11.5px;color:var(--faint)">先去档案馆建角色</span>';return;}
+  cards.forEach(x=>{
+    const b=document.createElement('button');b.type='button';b.className='oc-chip'+(cur&&cur.id===x.id?' on':'');b.textContent=x.name;
+    b.onclick=()=>{set(cur&&cur.id===x.id?null:x);ocRenderShoot();};
+    box.appendChild(b);
+  });
+}
+function ocRenderShoot(){
+  ocChipRow('#ocSA',ocShootA,x=>ocShootA=x);
+  ocChipRow('#ocSB',ocShootB,x=>ocShootB=x);
+}
+[['exp2','双人表情'],['pos2','双人姿势'],['exp1','表情'],['pos1','姿势'],['style','画风'],['filter','滤镜'],['cloth','服装'],['acc','配饰'],['hair','发型']].forEach(pair=>{
+  const b=document.createElement('button');b.type='button';b.className='oc-chip';b.textContent='+'+pair[1];
+  b.onclick=()=>{
+    const list=ARTIST_LIB.filter(it=>it.c===pair[0]);
+    if(!list.length)return toast('这个分类还没有词条');
+    openSheet('加「'+pair[1]+'」词（点选追加，再点已加的不重复）',[]);
+    const sb=$('#sheetItems');sb.innerHTML='';
+    const wrap=document.createElement('div');wrap.style.cssText='padding:2px 4px 10px;display:flex;flex-wrap:wrap;gap:6px';
+    const cur=()=>$('#ocW').value.trim();
+    list.forEach(it=>{
+      const wb=document.createElement('button');wb.type='button';wb.className='oc-chip';wb.textContent=it.n;
+      wb.onclick=()=>{
+        const seg=cur().split(',').map(s=>s.trim()).filter(Boolean);
+        if(seg.includes(it.s)){toast('已经加过了');return;}
+        seg.push(it.s);$('#ocW').value=seg.join(', ');wb.classList.add('on');toast('已加：'+it.n);
+      };
+      wrap.appendChild(wb);
+    });
+    const done=document.createElement('button');done.type='button';done.className='oc-chip on';done.style.cssText='width:100%;padding:9px;margin-top:8px';done.textContent='好了，回去';
+    done.onclick=()=>closeOverlays();
+    wrap.appendChild(done);sb.appendChild(wrap);
+  };
+  $('#ocWChips').appendChild(b);
+});
+$('#ocShootGo').onclick=async()=>{
+  const a=ocShootA;if(!a)return toast('先选角色 A');
+  const b=ocShootB;
+  const p=activePreset();if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  const words=$('#ocW').value.trim();
+  const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+  const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
+  const g=x=>x.gender==='f'?'1girl':'1boy';
+  let cnt;
+  if(!b)cnt=g(a)+', solo';
+  else if(a.gender==='m'&&b.gender==='m')cnt='2boys';
+  else if(a.gender==='f'&&b.gender==='f')cnt='2girls';
+  else cnt='1boy, 1girl';
+  const tags=[a.tags,b&&b.tags].filter(Boolean).join(', ');
+  const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+  const prompt=[cnt,tags,words,artsOn,QT].filter(Boolean).join(', ');
+  const btn=$('#ocShootGo');btn.textContent='画图中…';
+  try{
+    const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?'lowres, artistic error, bad anatomy, bad hands, extra digits, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+    const out=$('#ocShootOut');out.innerHTML='';
+    if(!src){out.innerHTML='<div style="font-size:12px;color:var(--danger)">接口没返回图片</div>';}
+    else{
+      const im=document.createElement('img');im.src=src;im.className='oc-img';im.style.maxWidth='min(300px,80vw)';im.style.margin='0 auto';
+      im.onclick=()=>window.open(src,'_blank');out.appendChild(im);
+      const sv=document.createElement('button');sv.className='oc-chip';sv.type='button';sv.style.cssText='margin:10px auto 0';sv.textContent='⬇ 保存原图';
+      sv.onclick=()=>{const aa=document.createElement('a');aa.href=src;aa.download='oc_shot_'+Date.now()+'.png';aa.click();};
+      out.appendChild(sv);
+    }
+  }catch(e){toast('合照失败：'+String(e&&e.message||e).slice(0,60));}
+  btn.textContent='📷 生成合照';
+};
+
 /* ================= 开场动画 ================= */
 const splash=$('#splash');
 let splashDone=false;
