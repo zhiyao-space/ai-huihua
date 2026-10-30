@@ -724,7 +724,16 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
   <div class="overlay center" id="impOv"><div class="modal" style="width:min(92%,440px);max-height:84%;overflow:auto;text-align:left">
     <button class="ov-x" aria-label="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <h3 style="font-size:15px;margin:0 0 4px">导入画师串</h3>
-    <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px">两种喂法：① 贴串源链接直接抓（GitHub raw 最稳，普通网页跨域抓不了就复制内容粘贴）；② 下面粘贴内容。小样包 JSON / 词条数组 / 一行一条都认，带图链接的直接当头像，省 API 钱。</p>
+    <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px">三种喂法：① 内置 Danbooru 官方画师库通道或 AI 按需求找；② 贴串源链接抓取；③ 直接粘贴内容。小样包 JSON / 词条数组 / 一行一条都认，带图链接的直接当头像，省 API 钱。</p>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="impWant" placeholder="想要啥？中文说「赛璐璐风格的帅气男生画师」，或英文关键词搜画师名" autocapitalize="off" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-size:12px;outline:none;color:var(--ink)">
+      <button class="mini" id="impAI" style="flex:0 0 auto">AI 找</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+      <button class="mtab" id="impChTop">热门画师榜</button>
+      <button class="mtab" id="impChName">搜画师名</button>
+      <span style="font-size:10.5px;color:var(--faint)">Danbooru 官方画师库 · 自动跳过词库已有</span>
+    </div>
     <div style="display:flex;gap:6px">
       <input id="impUrl" placeholder="粘贴串源链接…" autocapitalize="off" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-size:12px;outline:none;color:var(--ink)">
       <button class="mini" id="impFetch" style="flex:0 0 auto">抓取</button>
@@ -2526,6 +2535,96 @@ $('#impGo').onclick=()=>{
   toast('已导入 '+sel.length+' 条到「我的串」'+(withImg?' · '+withImg+' 条自带头像（零 API 直接显示）':''));
   impItems=[];impRender();
   $('#impOv').classList.remove('show');
+};
+
+/* ---- 内置通道：Danbooru 官方画师库 + AI 按需求找（自动查重） ---- */
+const IMP_PROXY='https://api.allorigins.win/raw?url='; // 直连被跨域挡时的兜底代理
+let impDbDead=false; // Danbooru 网络熔断：确认不通就不再浪费时间逐个验证
+async function impDanbooru(url){ // 直连失败自动换代理；返回 {ok,arr}，不 throw
+  let err=null;
+  for(const u of [url,IMP_PROXY+encodeURIComponent(url)]){
+    try{
+      const r=await fetch(u);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      if(Array.isArray(j))return {ok:true,arr:j};
+    }catch(e){err=e;}
+  }
+  return {ok:false,err:err};
+}
+function impChItems(arr){ // danbooru tag 数组 → 候选词条，自动跳过词库已有
+  const all=arr.filter(t=>t&&t.name).map(t=>{const nm=String(t.name).replace(/_/g,' ');return {n:nm,s:'artist:'+nm,d:'Danbooru 热度 '+t.post_count,img:'',on:true};});
+  const fresh=all.filter(it=>!impDup(it.s));
+  return {items:fresh,skip:all.length-fresh.length};
+}
+async function apiFindAI(p,need){ // AI 按中文需求推荐画师/风格 tag（danbooru 拼写，之后逐个验证）
+  if(!p.chatModel)throw new Error('未配置理解模型，去「配置」页选一个（gpt-4o-mini 就行）');
+  const root=apiRoot(p.baseUrl);
+  const sys='你是 Danbooru 画师 tag 专家。用户用中文描述想要的画风/角色类型，你从知识里挑最匹配的真实画师 Danbooru tag（8~10个，宁缺毋滥，小写，官方实际拼写），再配 3~6 个风格 tag（英文通用词，如 cel shading、soft shading）。输出严格 JSON，无 markdown 无解释：{"artists":[{"name":"danbooru实际拼写","why":"入选理由10字内"}],"tags":[{"name":"英文tag","why":"用途10字内"}]}';
+  const r=await fetch(root+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.chatModel,messages:[{role:'user',content:sys+'\n用户需求：'+need}],temperature:0.4,max_tokens:600})});
+  if(!r.ok){const t=await r.text().catch(()=>'');throw new Error('HTTP '+r.status+(t&&t.length<120?' '+t:''));}
+  const j=await r.json();
+  const c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+  const mm=c.match(/\{[\s\S]*\}/);
+  if(!mm)throw new Error('模型没返回名单，换个说法再试');
+  const o=JSON.parse(mm[0]);
+  const arts=(o.artists||[]).map(a=>({n:String(a&&a.name||'').trim().toLowerCase().replace(/_/g,' '),w:String(a&&a.why||'').trim().slice(0,14)})).filter(a=>a.n).map(a=>({n:'画师 '+a.n,s:'artist:'+a.n,d:'AI · '+a.w,img:'',on:true}));
+  const tgs=(o.tags||[]).map(t=>({n:String(t&&t.name||'').trim(),w:String(t&&t.why||'').trim().slice(0,14)})).filter(t=>t.n).map(t=>({n:t.n,s:t.n,d:'AI · '+t.w,img:'',on:true}));
+  if(!arts.length&&!tgs.length)throw new Error('模型没给出画师，换个说法再试');
+  const seen=new Set();
+  return arts.concat(tgs).filter(it=>{const k=impKey(it.s);if(seen.has(k))return false;seen.add(k);return true;});
+}
+async function impVerify(name){ // 去 Danbooru 验证画师真伪+热度；网络不通熔断，剩下的标未验证
+  if(impDbDead)return null;
+  const res=await impDanbooru('https://danbooru.donmai.us/tags.json?search%5Bname_matches%5D='+encodeURIComponent(name)+'&search%5Bcategory%5D=1&limit=1');
+  if(!res.ok){impDbDead=true;return null;}
+  const t=res.arr.find(x=>x&&x.name&&String(x.name).replace(/_/g,' ')===name);
+  return t?{pc:t.post_count}:null;
+}
+$('#impChTop').onclick=async()=>{
+  const b=$('#impChTop');const old=b.textContent;b.textContent='拉取中…';b.disabled=true;
+  try{
+    const res=await impDanbooru('https://danbooru.donmai.us/tags.json?search%5Bcategory%5D=1&search%5Border%5D=count&limit=40');
+    if(!res.ok)throw res.err||new Error('网络不通');
+    if(!res.arr.length)throw new Error('没数据');
+    const r=impChItems(res.arr);
+    impItems=r.items;impRender();
+    toast('拉到 '+r.items.length+' 条热门画师'+(r.skip?'，已跳过词库已有 '+r.skip+' 条':'')+'，勾选后点导入');
+  }catch(e){toast('热门榜抓不到：'+String(e&&e.message||e).slice(0,50)+'，可试试 AI 找串');}
+  b.textContent=old;b.disabled=false;
+};
+$('#impChName').onclick=async()=>{
+  const kw=$('#impWant').value.trim();
+  if(!kw)return toast('上面先输关键词（英文/罗马音，如 ghibli、sakimichan）');
+  if(/[^\x00-\x7f]/.test(kw))return toast('搜画师名要英文或罗马音；想用中文描述请点「AI 找」');
+  const b=$('#impChName');const old=b.textContent;b.textContent='搜索中…';b.disabled=true;
+  try{
+    const res=await impDanbooru('https://danbooru.donmai.us/tags.json?search%5Bname_matches%5D='+encodeURIComponent('*'+kw+'*')+'&search%5Bcategory%5D=1&search%5Border%5D=count&limit=40');
+    if(!res.ok)throw res.err||new Error('网络不通');
+    if(!res.arr.length){toast('没搜到，换个关键词试试');}
+    else{const r=impChItems(res.arr);impItems=r.items;impRender();toast('搜到 '+r.items.length+' 个画师'+(r.skip?'，已跳过词库已有 '+r.skip+' 条':''));}
+  }catch(e){toast('搜索失败：'+String(e&&e.message||e).slice(0,50));}
+  b.textContent=old;b.disabled=false;
+};
+$('#impAI').onclick=async()=>{
+  const need=$('#impWant').value.trim();
+  if(!need)return toast('先在上面说想要啥：比如 赛璐璐风格的帅气男生画师');
+  const p=activePreset();
+  if(!p||!p.chatModel)return toast('AI 找串要先配「理解模型」：去配置页选一个（gpt-4o-mini 就行）');
+  const b=$('#impAI');const old=b.textContent;b.textContent='AI 找串中…';b.disabled=true;
+  try{
+    const items=await apiFindAI(p,need);
+    const vs=await Promise.all(items.map(it=>it.s.startsWith('artist:')?impVerify(it.s.slice(7)):Promise.resolve(null)));
+    let ok=0;
+    items.forEach((it,i)=>{
+      if(impDup(it.s))it.on=false; // 词库已有的自动不勾
+      if(vs[i]){it.d='Danbooru 认证 · '+vs[i].pc+' 张 · '+it.d.replace('AI · ','');ok++;}
+    });
+    items.sort((x,y)=>(y.d.includes('认证')?1:0)-(x.d.includes('认证')?1:0)); // 验证过的排前面
+    impItems=items;impRender();
+    toast('AI 给了 '+items.length+' 条，其中 '+ok+' 条通过 Danbooru 验证；灰的是词库已有（自动不勾）');
+  }catch(e){toast('AI 找串失败：'+String(e&&e.message||e).slice(0,60));}
+  b.textContent=old;b.disabled=false;
 };
 
 /* ================= 画风实验室：说一句话，引擎自动配画风 ================= */
