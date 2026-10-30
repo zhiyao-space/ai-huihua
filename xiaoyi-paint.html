@@ -718,6 +718,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
       <button class="mtab" id="btnImportLib">导入串</button>
       <span style="font-size:10.5px;color:var(--faint)">批量/补全都只跑没小样的（内置包已有也算有）；小图右下↻重出一张</span>
     </div>
+    <div id="libStore" style="padding:0 16px 8px;flex:0 0 auto;font-size:10.5px;color:var(--faint)"></div>
     <div id="libTabs" style="display:flex;gap:6px;overflow-x:auto;padding:0 16px 10px;flex:0 0 auto"></div>
     <div id="libList" style="flex:1;overflow-y:auto;padding:2px 16px 20px"></div>
   </div></div>
@@ -908,16 +909,24 @@ async function persistLab(){ // 画风实验预览图同样进 IndexedDB，刷�
   await Promise.all(jobs).catch(()=>{});
   if(!store.set('xy_labmsgs',out))toast('本机存储空间不足，实验记录可能没存上');
 }
-async function persistLibImg(){ // 词库小样图进 IndexedDB，key=词条串内容（词库/画师串共用一份小样）
+async function persistLibImg(){ // 词库小样图进 IndexedDB（localStorage 只留引用+缩略图，防爆仓），再做内存 LRU
   const jobs=[];
   const out={};
   for(const k in S.libimg){
     const c={...S.libimg[k]};
-    if(isData(c.img)){jobs.push(idbSet('a:'+k,c.img));c.img='@idb:a:'+k;}
+    if(isData(c.img)){jobs.push(idbSet('a:'+k,c.img));c.img='@idb:a:'+k;c.st=1;}
     out[k]=c;
+    if(isData(S.libimg[k].img))S.libimg[k].st=1; // 标记本体已落库，内存 LRU 才敢转引用
   }
   await Promise.all(jobs).catch(()=>{});
-  store.set('xy_libimg',out);
+  evictLibMem();
+  if(!store.set('xy_libimg',out))toast('本机存储空间不足，小样可能没存上');
+}
+function evictLibMem(){ // 内存原图上限 150 张（LRU）：超出的转回 IndexedDB 引用，要用时再取，防卡
+  const mem=Object.keys(S.libimg).filter(k=>S.libimg[k]&&S.libimg[k].img&&isData(S.libimg[k].img)&&S.libimg[k].st);
+  if(mem.length<=150)return;
+  mem.sort((a,b)=>(S.libimg[a].ts||0)-(S.libimg[b].ts||0));
+  for(let i=0;i<mem.length-150;i++)S.libimg[mem[i]].img='@idb:a:'+mem[i];
 }
 async function persistSessions(){ // 归档会话图片转存 IndexedDB：单图+多图都转引用，防 localStorage 爆仓丢历史
   const jobs=[];
@@ -952,11 +961,11 @@ async function hydrateImgs(){ // 启动时把 IndexedDB 里的图片补回内存
       if(ch){s.imgs=a;dirty=true;}}
   }
   for(const c of S.chars){await one(c,'c');}
-  for(const k in S.libimg){ // 词库小样图补回（历史脏数据：无图的空壳顺手清掉）
+  for(const k in S.libimg){ // 词库小样图不再启动全量回填（图多了启动慢又占内存）：保留 @idb: 引用，列表滚到可见再按需取；只清空壳
     const o=S.libimg[k];
-    if(!o||!o.img){delete S.libimg[k];dirty=true;continue;}
-    if(isRef(o.img)){const v=await fix(o.img.slice(5));if(v){o.img=v;dirty=true;}else{delete S.libimg[k];dirty=true;}}
+    if(!o||!o.img){delete S.libimg[k];dirty=true;}
   }
+  if(Object.keys(S.libimg).some(k=>isData(S.libimg[k].img)))persistLibImg().catch(()=>{}); // 存量 dataURL 后台迁进 IndexedDB，localStorage 减负
   for(const s of [...S.sessions,...S.labSessions]){ // 归档会话图片补回（单图+多图）
     for(const m of s.msgs){
       if(isRef(m.img)){const g=await fix(m.img.slice(5));if(g){m.img=g;dirty=true;}}
@@ -1411,7 +1420,8 @@ function tgRender(){
   const lb=$('#tgList');lb.innerHTML='';
   list.forEach(x=>{
     const b=document.createElement('button');b.type='button';
-    b.innerHTML=(x.s&&libImgOf(x.s)?'<img class="tg-img" loading="lazy" src="'+libImgOf(x.s)+'" alt="">':'')+'<span class="tg-tag">'+esc(x.tag)+'</span>'+(x.cn?'<span class="tg-cn">'+esc(x.cn)+'</span>':'');
+    const tim=libThumbOf(x.s);
+    b.innerHTML=(tim?'<img class="tg-img" loading="lazy" src="'+tim+'" alt="">':'')+'<span class="tg-tag">'+esc(x.tag)+'</span>'+(x.cn?'<span class="tg-cn">'+esc(x.cn)+'</span>':'');
     b.onpointerdown=e=>{e.preventDefault();tgInsert(x.tag);};
     lb.appendChild(b);
   });
@@ -1480,7 +1490,7 @@ function renderPrTags(){ // 高亮层 + 标签条一起刷
   box.classList.add('show');box.innerHTML='';
   toks.forEach((t,i)=>{
     const b=document.createElement('button');b.type='button';b.className='pr-chip';
-    const im=libImgOf('artist:'+t.name);
+    const im=libThumbOf('artist:'+t.name);
     b.innerHTML='<img'+(im?' src="'+im+'"':'')+' alt=""><span class="pc-n">'+esc(t.name)+'</span>'+(Math.abs(t.w-1)>=0.01?'<span class="pc-w">×'+String(parseFloat(t.w.toFixed(2)))+'</span>':'');
     b.onclick=()=>prTagPop(i);
     box.appendChild(b);
@@ -1491,7 +1501,7 @@ function prTagPop(i){ // 点标签：权重滑杆 / 出小样 / 收藏 / 删除
   openSheet('画师标签 · '+t.name,[]);
   const box=$('#sheetItems');box.innerHTML='';
   const wrap=document.createElement('div');wrap.style.padding='4px 12px 10px';
-  const im=libImgOf('artist:'+t.name);
+  const im=libThumbOf('artist:'+t.name);
   wrap.innerHTML='<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">'
     +(im?'<img id="pcPrev" src="'+im+'" style="width:54px;height:54px;border-radius:12px;object-fit:cover;border:1px solid var(--rule);cursor:zoom-in;flex:0 0 auto">':'<span style="width:54px;height:54px;border-radius:12px;border:1px dashed var(--rule2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--faint);flex:0 0 auto;text-align:center">无小样</span>')
     +'<div style="min-width:0"><div style="font-size:13px;font-weight:600;word-break:break-all">'+esc('artist:'+t.name)+'</div><div style="font-size:11px;color:var(--muted);margin-top:2px">权重控画风浓淡：1 原味，往右更浓，往左更淡</div></div></div>'
@@ -2180,12 +2190,71 @@ function libAdd(it){
   persist('xy_artists',S.artists,false);renderArtists();
   toast('「'+it.n+'」已加入画师串并启用');
 }
-function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（v2清单存URL按需加载，兼容v1全量dataURL）
+function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（v2清单存URL按需加载，兼容v1全量dataURL）；@idb: 引用不算可直接用的 src
   const e=S.libimg[str];
-  if(e)return e.img;
+  if(e)return isRef(e.img)?null:e.img;
   const B=window.XY_SAMPLES;
   if(!B)return null;
   return (B.urls&&B.urls[str])||B[str]||null;
+}
+const LIB_BLIP='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1px 透明占位
+const libImgAny=str=>!!(S.libimg[str]&&S.libimg[str].img); // 出过样吗（含还在 IndexedDB 里的引用图）——补样判断用它，别用 libImgOf
+function libThumbOf(str){ // 列表缩略：优先 96px 小图（省解码内存），其次原图；引用图回 null 由观察器按需补
+  const e=S.libimg[str];
+  if(e&&e.t)return e.t;
+  return libImgOf(str);
+}
+async function libViewOf(str){ // 看大图：原图（引用图现场取回），没有就 null
+  const e=S.libimg[str];
+  if(!e||!e.img)return null;
+  if(isRef(e.img)){
+    const v=await idbGet(e.img.slice(5));
+    if(!v){delete S.libimg[str];return null;}
+    e.img=v;evictLibMem();
+    return v;
+  }
+  return e.img;
+}
+const libEnsuring={};
+async function libEnsure(k){ // 引用图按需回填内存并生成 96px 缩略；返回可直接显示的 src（优先缩略）
+  const e=S.libimg[k];
+  if(!e||!e.img)return null;
+  if(!isRef(e.img))return e.t||e.img;
+  if(libEnsuring[k])return libEnsuring[k];
+  libEnsuring[k]=(async()=>{
+    const v=await idbGet(e.img.slice(5));
+    delete libEnsuring[k];
+    if(!v){delete S.libimg[k];return null;}
+    e.img=v;e.st=1;
+    if(!e.t)e.t=await shrinkImg(v,96,.7);
+    evictLibMem();
+    return e.t||v;
+  })();
+  return libEnsuring[k];
+}
+let libObs=null;
+function libWatch(root){ // 词库/画师串列表：img 滚到可见才把 IndexedDB 里的图按需捞回（不全量塞内存）
+  if(!('IntersectionObserver' in window)||!root)return;
+  if(!libObs)libObs=new IntersectionObserver(es=>{
+    es.forEach(en=>{
+      if(!en.isIntersecting)return;
+      const im=en.target;libObs.unobserve(im);
+      const k=im.dataset.k;if(!k)return;
+      libEnsure(k).then(src=>{if(src&&im.isConnected)im.src=src;});
+    });
+  },{rootMargin:'160px'});
+  root.querySelectorAll('img[data-k]').forEach(im=>libObs.observe(im));
+}
+async function libStoreInfo(){ // 存储看板：小样张数 + 本站在浏览器里的占用/配额
+  const el=$('#libStore');if(!el)return;
+  const n=Object.keys(S.libimg).length;
+  let txt='已存小样 '+n+' 张';
+  try{
+    const e=await navigator.storage.estimate();
+    const u=(e.usage||0)/1048576,q=(e.quota||0)/1048576;
+    txt+=' · 本站共占 '+u.toFixed(0)+' MB'+(q?'（浏览器可用约 '+(q>=1024?(q/1024).toFixed(1)+' GB':q.toFixed(0)+' MB')+'）':'');
+  }catch(err){}
+  el.textContent=txt;
 }
 let bakedP=null;
 function bakeAfter(){ // 内置包就绪后刷新三处缩略图
@@ -2217,10 +2286,12 @@ function loadBakedSamples(){ // 惰性加载内置小样包 samples.js：失败/
 }
 function libChipHTML(it){
   const added=libHas(it.s);
-  const sm=libImgOf(it.s);
+  const sm=libThumbOf(it.s);
   const thumb=sm
-    ?'<img class="libthumb" loading="lazy" decoding="async" src="'+sm+'" alt=""><span class="libreroll" data-k="'+esc(it.s)+'" title="重出一张">↻</span>'
-    :'<span class="libthumb empty sampbtn" data-k="'+esc(it.s)+'">出小样</span>';
+    ?'<img class="libthumb" loading="lazy" decoding="async" data-k="'+esc(it.s)+'" src="'+sm+'" alt=""><span class="libreroll" data-k="'+esc(it.s)+'" title="重出一张">↻</span>'
+    :(libImgAny(it.s)
+      ?'<img class="libthumb" loading="lazy" decoding="async" data-k="'+esc(it.s)+'" src="'+LIB_BLIP+'" alt="">'
+      :'<span class="libthumb empty sampbtn" data-k="'+esc(it.s)+'">出小样</span>');
   return '<span class="libside" data-side="1">'+thumb+'</span>'
     +'<span class="libtxt"><b>'+esc(it.n)+(added?' · 已加入':'')+'</b><span>'+esc(it.s)+'</span>'+(it.d?'<em>'+esc(it.d)+'</em>':'')+'</span>';
 }
@@ -2242,8 +2313,9 @@ async function genSampleCore(str,label){ // 生成+存储主体，单个与批�
   try{
     const src=await apiGenerate(p,{prompt,size:isNaiS?'832x1216':'512x512',neg:neg}); // 本版 apiGenerate 返回裸 src 字符串
     if(!src){toast('「'+label+'」小样失败：接口没返回图片');return false;}
-    S.libimg[str]={img:src,ts:Date.now()};
-    await persistLibImg();
+    S.libimg[str]={img:src,ts:Date.now(),st:1};
+    await persistLibImg(); // 落 IndexedDB + 内存 LRU，localStorage 只留引用
+    shrinkImg(src,96,.7).then(th=>{const e=S.libimg[str];if(e&&e.img===src&&!e.t)e.t=th;}); // 96px 缩略后台生成，列表以后只显小图省内存
     return true;
   }catch(e){
     toast('「'+label+'」小样失败：'+String(e&&e.message||e).slice(0,60));
@@ -2269,7 +2341,7 @@ async function batchSamples(allMode){ // allMode=跨全部分类补缺样；本�
   const p=activePreset();
   if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
   const pool=allMode?ARTIST_LIB.filter(it=>it&&it.s):libFiltered();
-  const list=pool.filter(it=>!libImgOf(it.s)&&!hasBaked(it.s));
+  const list=pool.filter(it=>!libImgAny(it.s)&&!hasBaked(it.s)); // libImgAny 含 IndexedDB 里的引用图，别把存过的当成没样重出烧钱
   if(!list.length)return toast(allMode?'全部词条小样都齐了，一张都不用烧':'当前分类的小样都齐了；跨分类补缺用「补全缺样」');
   batchRun=true;
   const btn=allMode?$('#btnBatchAll'):$('#btnBatch');
@@ -2308,7 +2380,9 @@ async function exportSamples(onlyNew){ // 三通道导出：系统分享面板�
   if(!keys.length)return toast(onlyNew?'没有新小样要导：本地小样都已烘焙进内置包':'还没有本地小样，先「批量出小样」几张');
   toast('正在压缩打包 '+keys.length+' 张'+(onlyNew?'（仅新增）':'')+'，稍等…');
   const imgs={};
-  for(const k of keys)imgs[k]=await shrinkImg(S.libimg[k].img,384,.82);
+  for(const k of keys){const src=await libViewOf(k);if(src)imgs[k]=await shrinkImg(src,384,.82);} // IndexedDB 引用图现场取回再压
+  const n=Object.keys(imgs).length;
+  if(!n)return toast('图都取不出来了，重新出几张小样试试');
   const json=JSON.stringify({v:1,imgs:imgs,onlyNew:!!onlyNew});
   const fname=onlyNew?'artist-samples-new.json':'artist-samples.json';
   let f=null;
@@ -2322,9 +2396,9 @@ async function exportSamples(onlyNew){ // 三通道导出：系统分享面板�
     a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
     a.download=fname;document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
-    toast('小样包已开始下载（'+keys.length+' 条）· 文件管理→Download 里找');
+    toast('小样包已开始下载（'+n+' 条）· 文件管理→Download 里找');
   }catch(e){ // ③ 文本兜底
-    openTextOv('小样包 · 全选复制发给 Trae（'+keys.length+' 条）',json);
+    openTextOv('小样包 · 全选复制发给 Trae（'+n+' 条）',json);
   }
 }
 function libFiltered(){
@@ -2362,15 +2436,17 @@ function renderLibList(){
     if(side){
       const rr=side.querySelector('.libreroll');
       if(rr)rr.onclick=e=>{e.stopPropagation();const it=libFiltered()[i];if(it)genSample(it.s,it.n);};
-      side.onclick=e=>{ // 点小图区：没图出小样，有图看大图（↻ 角标除外）
+      side.onclick=async e=>{ // 点小图区：有图看大图（IndexedDB 引用图现场取回），真没图才出小样（↻ 角标除外）
         e.stopPropagation();
+        if(e.target.closest('.libreroll')){const it2=libFiltered()[i];if(it2)genSample(it2.s,it2.n);return;}
         const it=libFiltered()[i];if(!it)return;
-        const sm=libImgOf(it.s);
+        const sm=await libViewOf(it.s);
         if(sm)openViewer({text:'画师小样 · '+it.n,en:it.s},sm);
         else genSample(it.s,it.n);
       };
     }
   });
+  libWatch(box);
 }
 function renderLibTabs(){
   const box=$('#libTabs');if(!box)return;
@@ -2410,6 +2486,7 @@ $('#btnLib').onclick=()=>{
   $('#libSearch').value='';libQ='';libTab='combo';
   renderSampSubj();
   renderLibTabs();renderLibList();
+  libStoreInfo(); // 存储看板：小样张数 + 本站占用/配额
   loadBakedSamples().then(ok=>{if(ok)renderLibList();}); // 开词库时若内置包还没就绪，就绪后补刷缩略图
   ovOpen();$('#libOv').classList.add('show');
 };
@@ -2480,7 +2557,7 @@ function impRender(){
   if(!impItems.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint);padding:4px 2px">还没解析出串。贴好后点「解析预览」，点词条勾选/取消。</div>';return;}
   box.innerHTML=impItems.map((it,i)=>{
     const dup=impDup(it.s);
-    const sm=it.img||libImgOf(it.s);
+    const sm=it.img||libThumbOf(it.s);
     return '<button class="libchip'+(dup?' added':'')+'" data-i="'+i+'"'+(it.on?'':' style="opacity:.38"')+'>'
       +'<span class="libside">'+(sm?'<img class="libthumb" loading="lazy" decoding="async" src="'+esc(sm)+'" alt="">':'<span class="libthumb empty">无图</span>')+'</span>'
       +'<span class="libtxt"><b>'+esc(it.n)+(dup?' · 词库已有':'')+'</b><span>'+esc(it.s)+'</span>'+(it.img?'<em>自带头像</em>':'')+'</span></button>';
@@ -3060,16 +3137,18 @@ function renderArtists(){
   box.innerHTML='';
   S.artists.forEach(a=>{
     const c=document.createElement('div');c.className='card';
-    const sm=libImgOf(a.str);
+    const sm=libThumbOf(a.str);
     const thumb=sm
-      ?'<img class="libthumb" src="'+sm+'" alt="">'
-      :'<span class="libthumb empty sampbtn" data-k="'+esc(a.str)+'">出小样</span>';
+      ?'<img class="libthumb" loading="lazy" decoding="async" data-k="'+esc(a.str)+'" src="'+sm+'" alt="">'
+      :(libImgAny(a.str)
+        ?'<img class="libthumb" loading="lazy" decoding="async" data-k="'+esc(a.str)+'" src="'+LIB_BLIP+'" alt="">'
+        :'<span class="libthumb empty sampbtn" data-k="'+esc(a.str)+'">出小样</span>');
     c.innerHTML=`<div class="row"><span class="libside" data-side="1">${thumb}</span><div class="grow" style="min-width:0"><div class="nm" style="font-size:13px">${esc(a.name||'')}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.str)}</div></div>
       <input type="checkbox" ${a.on?'checked':''} style="width:20px;height:20px;accent-color:var(--accent);flex:0 0 auto"></div>
       <div class="acts"><button class="mini" data-a="edit">编辑</button><button class="mini sampbtn" data-a="samp" data-k="${esc(a.str)}">出小样</button><button class="mini danger" data-a="del">删除</button></div>`;
     const side=c.querySelector('[data-side]');
-    side.onclick=()=>{
-      const cur=libImgOf(a.str);
+    side.onclick=async()=>{
+      const cur=await libViewOf(a.str); // IndexedDB 引用图现场取回再看
       if(cur)openViewer({text:'画师小样 · '+(a.name||'自定义串'),en:a.str},cur);
       else genSample(a.str,a.name||'自定义串');
     };
@@ -3090,6 +3169,7 @@ function renderArtists(){
     };
     box.appendChild(c);
   });
+  libWatch(box);
 }
 
 /* ================= 画师串配方器：画师/整条串/画风描述词混搭 + 权重 + 预览出图 ================= */
@@ -3218,7 +3298,7 @@ function renderComboRes(q){ // 候选：我的串 + 组合串（整条做原料�
   uniq.forEach(x=>{
     const b=document.createElement('button');b.type='button';
     b.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:10px;padding:5px 8px;font-size:12px';
-    const im=libImgOf(x.s);
+    const im=libThumbOf(x.s);
     const badge=x.k==='merge'?'<span style="flex:0 0 auto;font-size:9px;color:var(--muted);border:1px solid var(--rule2);border-radius:5px;padding:0 4px">串</span>':'';
     b.innerHTML=(im?'<img src="'+im+'" style="width:26px;height:26px;border-radius:8px;object-fit:cover;flex:0 0 auto">':'')
       +badge
@@ -3241,7 +3321,7 @@ function renderComboLab(){
     comboIng.forEach((x,i)=>{
       const row=document.createElement('div');
       row.style.cssText='display:flex;gap:7px;align-items:center;border:1px solid var(--rule);border-radius:10px;padding:4px 7px';
-      const im=libImgOf(x.s);
+      const im=libThumbOf(x.s);
       const slot=im?'<img src="'+im+'" style="width:26px;height:26px;border-radius:8px;object-fit:cover;flex:0 0 auto">'
         :'<span style="width:26px;height:26px;border-radius:8px;border:1px dashed var(--rule2);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint)">'+(x.k==='artist'?'画':x.k==='text'?'描':'串')+'</span>';
       const badge=(im&&x.k==='merge')?'<span style="flex:0 0 auto;font-size:9px;color:var(--muted);border:1px solid var(--rule2);border-radius:5px;padding:0 4px">串</span>':'';
