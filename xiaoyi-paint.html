@@ -1625,7 +1625,7 @@ function openParams(){
   </div>
   <div class="field" style="margin-top:4px">
     <label>负面提示词</label>
-    <textarea id="negText" rows="2" placeholder="不想出现的东西，如：lowres, bad anatomy, blurry。留空不发送；个别模型不支持该参数，报错就清空" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(S.neg)}</textarea>
+    <textarea id="negText" rows="2" placeholder="留空=自动套防崩防丑防老头兜底负面；填了就完全按你写的发。个别模型不支持该参数，报错就在这里随便填个空格覆盖兜底" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">${esc(S.neg)}</textarea>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
       <button id="negTr" type="button" style="border:0;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:600">中→英</button>
       <button data-neg="fix" style="border:1px solid var(--rule2);background:var(--elev);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:11.5px">防崩</button>
@@ -1702,19 +1702,19 @@ function openParams(){
   const sr=wrap.querySelector('#strRange');
   sr.oninput=()=>{S.strength=+sr.value;store.set('xy_strength',S.strength);wrap.querySelector('#strVal').textContent=S.strength+'%';};
   const nt=wrap.querySelector('#negText');
-  nt.oninput=()=>{S.neg=nt.value.slice(0,300);store.set('xy_neg',S.neg);};
+  nt.oninput=()=>{S.neg=nt.value.slice(0,600);store.set('xy_neg',S.neg);};
   const NEG_PRESET={
-    fix:'lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, cross-eyed, extra digits, fused fingers, bad hands, mutated hands, long neck, blurry',
+    fix:NEG_STD,
     hands:'bad hands, mutated hands, extra fingers, fused fingers, missing fingers, extra digits, fewer digits, malformed limbs',
     style:'photorealistic, realistic, 3d render, photo, western cartoon, chibi',
-    nai:'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers, extra arms, extra legs'
+    nai:NEG_NAI
   };
   wrap.querySelectorAll('[data-neg]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.neg;
     if(k==='clear'){nt.value='';S.neg='';store.set('xy_neg',S.neg);toast('负面词已清空');return;}
     const cur=nt.value.replace(/\s*$/,'');const add=NEG_PRESET[k];
     const val=cur?(cur.includes(add)?cur:cur+', '+add):add;
-    nt.value=val.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
+    nt.value=val.slice(0,600);S.neg=nt.value;store.set('xy_neg',S.neg);
     toast(k==='fix'?'已追加防崩负面词':k==='hands'?'已追加手部修正词':k==='nai'?'已追加 NAI V4.5 防崩负面词':'已追加画风排除词');
   });
   wrap.querySelector('#negTr').onclick=async()=>{ // 中文负面词翻成英文（负面词不过主翻译管线，这里手动转）
@@ -1727,7 +1727,7 @@ function openParams(){
     try{
       const en=await translatePrompt(p,v,true);
       if(!en||en===v)return toast('没翻出来，重试一次');
-      nt.value=en.slice(0,300);S.neg=nt.value;store.set('xy_neg',S.neg);
+      nt.value=en.slice(0,600);S.neg=nt.value;store.set('xy_neg',S.neg);
       toast('负面词已翻成英文');
     }catch(e){toast('翻译失败，稍后再试');}
   };
@@ -2640,7 +2640,12 @@ function libChipHTML(it){
 /* ================= 词库真实小样：用你自己的模型出一张统一测试图，所见即所得 ================= */
 let sampBusy=null; // 正在出小样的串内容
 let batchRun=false; // 批量出小样进行中
-const SAMP_NEG='lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, bad anatomy, deformed face, asymmetric eyes, extra digits, bad hands, blurry';
+// 统一负面词库：防崩（五官/手/肢体）+ 防丑 + 防老头大叔；全管线（对话/词库小样/配方器/OC/画室）共用，改这里一处全生效
+const NEG_BREAK='bad anatomy, bad hands, extra digits, fewer digits, missing fingers, fused fingers, deformed face, asymmetric eyes, cross-eyed, poorly drawn face, poorly drawn hands, extra arms, extra legs, long neck, disfigured, mutated, ugly';
+const NEG_OLD='old, old man, old male, elderly, mature male, wrinkled skin, bald, receding hairline';
+const NEG_NAI='lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, '+NEG_BREAK+', '+NEG_OLD;
+const NEG_STD='lowres, worst quality, bad quality, jpeg artifacts, watermark, signature, blurry, '+NEG_BREAK+', '+NEG_OLD;
+const SAMP_NEG=NEG_STD; // 旧名保留引用
 function sampSetBtns(str,txt,dis){ // 词库/画师串两处同串小样按钮一起变状态
   $$('.sampbtn').forEach(b=>{if(b.dataset.k===str){b.textContent=txt;b.disabled=!!dis;}});
 }
@@ -2651,7 +2656,7 @@ async function genSampleCore(str,label){ // 生成+存储主体，单个与批�
   const QT=isNaiS?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
   const subj=(S.sampSubj==='boy'?'1boy, solo':'1girl, solo')+', upper body, looking at viewer, detailed background, cinematic lighting, depth of field';
   const prompt=str+', '+subj+', '+QT;
-  const neg=isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG;
+  const neg=isNaiS?NEG_NAI:SAMP_NEG;
   try{
     const src=await apiGenerate(p,{prompt,size:isNaiS?'832x1216':'512x512',neg:neg}); // 本版 apiGenerate 返回裸 src 字符串
     if(!src){toast('「'+label+'」小样失败：接口没返回图片');return false;}
@@ -3074,7 +3079,7 @@ const LAB_FEEL=[
   {n:'高对比锐利',w:['锐利','高对比','锋利'],s:'high contrast, sharp details'},
   {n:'奶油柔光',w:['奶油','柔和'],s:'soft lighting, creamy tones, gentle gradients'},
 ];
-const LAB_NEG='lowres, worst quality, bad quality, bad anatomy, deformed face, asymmetric eyes, cross-eyed, extra digits, fused fingers, bad hands, blurry';
+const LAB_NEG=NEG_STD;
 const LAB_SUBJS=[ // 主角词条：按用户说的性别自动选，杜绝「说男变女」
   {k:'girl',label:'女生',en:'1girl, solo, upper body, simple background'},
   {k:'boy',label:'男生',en:'1boy, solo, upper body, simple background'},
@@ -3443,7 +3448,7 @@ $('#rDraw').onclick=async()=>{
   const shot=$('#rShot');
   rBusy=true;shot.innerHTML='<div class="skel" style="height:100%;margin:0"></div>';shot.style.border='0';
   try{
-    const src=await apiGenerate(p,{prompt:style+', '+subj+', '+QT,size:isNaiS?'832x1216':'512x512',neg:isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG});
+    const src=await apiGenerate(p,{prompt:style+', '+subj+', '+QT,size:isNaiS?'832x1216':'512x512',neg:isNaiS?NEG_NAI:SAMP_NEG});
     if(!src)throw new Error('接口没返回图片');
     rShotImg(src);
     toast('预览好了，点图看大图');
@@ -3614,7 +3619,7 @@ async function clDraw(){ // 当场画一张预览：拼串+场景描述直出
   comboBusy=true;
   shot.innerHTML='<div class="skel" style="height:100%;margin:0"></div>';shot.style.border='0';
   try{
-    const src=await apiGenerate(p,{prompt:str+', '+subj+', '+QT,size:isNaiS?'832x1216':'512x512',neg:isNaiS?'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, multiple views, logo, too many watermarks, bad anatomy, bad hands, extra digits, fewer digits, missing fingers':SAMP_NEG});
+    const src=await apiGenerate(p,{prompt:str+', '+subj+', '+QT,size:isNaiS?'832x1216':'512x512',neg:isNaiS?NEG_NAI:SAMP_NEG});
     if(!src)throw new Error('接口没返回图片');
     comboShot=src;clShotImg(src);
     toast('预览好了，点图看大图');
@@ -4128,7 +4133,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   if(S.qtag&&S.qtag!=='off'&&!S.raw)prompt=(QT_LV[S.qtag]||QT_LV.heavy)+', '+prompt; // 无限制模式不追加兜底词
   refs=[...((S.codeMode&&st&&st.code&&S.codeNoImg)?[]:styleImgs(st)),...cs.map(c=>c.img),...(S.faceLock&&S.faceRef?[S.faceRef]:[]),...refImgs,...S.refs.map(r=>r.img)]; // 纯文字锁风：参数码生效时不传画风参考图；人物一致：长相参考图自动带上（st 为空时不再抛错）
   n=Math.max(1,Math.min(4,S.count|0));
-  useNeg=S.neg;useSize=S.size;useSeed=S.seed;
+  useNeg=S.neg||(/nai[\s_-]?diffusion/i.test(String(p.model||''))?NEG_NAI:NEG_STD);useSize=S.size;useSeed=S.seed; // 用户没填负面时自动兜底：防崩+防丑+防老头大叔；填了就完全尊重用户
   }
 
   prog={id:uid(),role:'ai',kind:'progress',text:pick(ACKS),pct:4,stage:'已读 · 理解需求',ts:Date.now()};
@@ -4209,7 +4214,7 @@ async function replayMsg(m,vary){ // 同款重roll（快照原样重发）/ 单�
     img=await toDataURL(src);
     if(!img||!img.startsWith('data:'))return toast('图片数据没取到，换一张试试');
   }
-  const snap=m.snap||{prompt:base,en:(m.en&&m.en!==base)?m.en:'',neg:S.neg,size:S.size,seed:S.seed,count:2};
+  const snap=m.snap||{prompt:base,en:(m.en&&m.en!==base)?m.en:'',neg:S.neg||(/nai[\s_-]?diffusion/i.test(String((activePreset()||{}).model||''))?NEG_NAI:NEG_STD),size:S.size,seed:S.seed,count:2};
   await runGeneration({replay:{...snap,img}});
 }
 
@@ -4859,7 +4864,7 @@ function ocEdit(id){
     const btn=w.querySelector('#ocAvaBtn');btn.textContent='画头像中…';
     try{
       const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
-      const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, portrait, upper body, looking at viewer, simple background, '+tags+(isNai?', very aesthetic, masterpiece, no text':', best quality, absurdres'),size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+      const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, portrait, upper body, looking at viewer, simple background, '+tags+(isNai?', very aesthetic, masterpiece, no text':', best quality, absurdres'),size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
       if(!src){toast('接口没返回图片');btn.textContent='🎨 画头像';return;}
       c.img=await shrinkImg(src,128,.82); // 缩图存卡上，体积小直接进 localStorage
       btn.textContent='✅ 重画头像';toast('头像画好了，记得点保存');
@@ -4981,7 +4986,7 @@ async function ocSelfie(c){
   try{
     const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
     const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, absurdres';
-    const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, selfie, upper body, looking at viewer, '+(c.tags||'')+', '+QT,size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+    const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, selfie, upper body, looking at viewer, '+(c.tags||'')+', '+QT,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
     if(!src)return toast('接口没返回图片');
     const th=await shrinkImg(src,160,.75);
     S.ocMsgs.push({who:c.id,n:c.name,t:'📸（发了一张自拍）',img:th,ts:Date.now()});
@@ -5062,7 +5067,7 @@ $('#ocFEGo').onclick=async()=>{
   for(const fe of OC_FES){
     try{
       const prompt=(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||'')+', '+fe[1]+(artsOn?', '+artsOn:'')+', '+QT;
-      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?'lowres, bad anatomy, bad hands, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
       if(src)done.push({k:fe[0],src});
     }catch(e){}
   }
@@ -5137,7 +5142,7 @@ $('#ocShootGo').onclick=async()=>{
   const prompt=[cnt,tags,words,artsOn,QT].filter(Boolean).join(', ');
   const btn=$('#ocShootGo');btn.textContent='画图中…';
   try{
-    const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?'lowres, artistic error, bad anatomy, bad hands, extra digits, worst quality, jpeg artifacts, multiple views, logo, watermark':SAMP_NEG});
+    const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?NEG_NAI:SAMP_NEG});
     const out=$('#ocShootOut');out.innerHTML='';
     if(!src){out.innerHTML='<div style="font-size:12px;color:var(--danger)">接口没返回图片</div>';}
     else{
