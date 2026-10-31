@@ -5180,11 +5180,18 @@ $('#ocShootGo').onclick=async()=>{
 };
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
-function extractArtists(en){ // 从提示词抽 artist: 段（剥掉 {} [] () 权重壳）与剩余风格词
-  const t=String(en||'').replace(/[{\[]+(artist:[^}\]]*)[}\]]+/gi,'$1').replace(/\((artist:[^)]*?)\)(?::[\d.]+)?/gi,'$1');
-  const arts=[...new Set((t.match(/artist:[^,]+/gi)||[]).map(s=>s.trim()))];
-  const rest=t.replace(/artist:[^,]+/gi,'').replace(/\(\s*[^()]*?:[\d.]+\s*\)/g,'').split(',').map(s=>s.trim().replace(/^[,{\[\s]+|[,}\]\s]+$/g,'')).filter(s=>s&&s.length<40&&!/^\d/.test(s));
-  return {str:arts.join(', '),rest:[...new Set(rest)].slice(0,8).join(', '),names:arts.map(a=>a.replace(/^artist:/i,'').trim())};
+function extractArtists(en){ // 从提示词抽 artist: 段——权重壳原样保留（{artist:x} 加权 / (artist:x:1.25) 数值权重），调过的味道不归零
+  const segs=String(en||'').split(',');
+  const arts=[],seen=new Set();
+  segs.forEach(seg=>{
+    const s=seg.trim();
+    if(!s||!/artist:/i.test(s))return;
+    const key=s.toLowerCase().replace(/[{}()[\]:\d.\s]/g,'');
+    if(seen.has(key))return;seen.add(key);
+    arts.push(s);
+  });
+  const rest=segs.filter(s=>!/artist:/i.test(s)).map(s=>s.trim().replace(/\([^()]*?:[\d.]+\)/g,'')).map(s=>s.replace(/^[,{[\s]+|[,)}\]\s]+$/g,'').trim()).filter(s=>s&&s.length<40&&!/^\d/.test(s));
+  return {str:arts.join(', '),rest:[...new Set(rest)].slice(0,8).join(', '),names:arts.map(a=>a.replace(/^[{[\(\s]*artist:/i,'').replace(/[\)\]:\d.\s}]+$/g,'').replace(/^[{[\s]+/,'').trim())};
 }
 function saveMsgArtists(m,imgSrc){ // 生成图一键存串：解析提示词里的画师串 → 调和成我的串 → 图设为小样头像（零 API）
   const ex=extractArtists(m.en||m.prompt||'');
