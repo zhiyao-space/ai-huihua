@@ -1226,7 +1226,7 @@ function msgEl(m){
     if(!imgs.length)inner+=`<div style="font-size:12.5px;color:var(--muted);padding:6px 0">[图片已清理：本机存储空间不足]</div>`;
     if(m.text)inner+=`<div>${esc(m.text)}</div>`;
     if(m.en)inner+=`<div class="en-line">EN · ${esc(m.en)}</div>`;
-    if(m.prompt)inner+=`<div class="img-acts"><button data-a="same">同款 · 再来几张</button><button data-a="vary">以这张出变体</button><button data-a="face">设为OC形象</button></div>`;
+    if(m.prompt)inner+=`<div class="img-acts"><button data-a="same">同款 · 再来几张</button><button data-a="vary">以这张出变体</button><button data-a="face">设为OC形象</button><button data-a="svart">存为画师串</button><button data-a="vart">看图反推</button></div>`;
     if(m.prompt||m.en)inner+=`<div class="pp-chip" data-pp="1">查看 / 复制提示词</div>`;
   }else{
     inner+=`<div>${esc(m.text)}</div>`;
@@ -1243,6 +1243,8 @@ function msgEl(m){
   const actSame=div.querySelector('[data-a=same]');if(actSame)actSame.onclick=e=>{e.stopPropagation();replayMsg(m,false);};
   const actVary=div.querySelector('[data-a=vary]');if(actVary)actVary.onclick=e=>{e.stopPropagation();replayMsg(m,true);};
   const actFace=div.querySelector('[data-a=face]');if(actFace)actFace.onclick=e=>{e.stopPropagation();const f=div.querySelector('img.gen');if(f)setImgAsFace(f.src);};
+  const actSvArt=div.querySelector('[data-a=svart]');if(actSvArt)actSvArt.onclick=e=>{e.stopPropagation();const f=div.querySelector('img.gen');saveMsgArtists(m,f?f.src:'');};
+  const actVArt=div.querySelector('[data-a=vart]');if(actVArt)actVArt.onclick=e=>{e.stopPropagation();const f=div.querySelector('img.gen');if(f)imgToArtist(f.src);};
   bindPress(div,()=>sheetFor(m));
   return div;
 }
@@ -4303,6 +4305,27 @@ async function apiVibe(p,imgs){
   const o=JSON.parse(mm[0]);
   return {name:String(o.name||'提炼画风').slice(0,16),zh:String(o.zh||'').slice(0,120),en:String(o.en||'').slice(0,600)};
 }
+async function apiArtistFromImg(p,img){ // 图生画师串：看图反推画风元素 → 合成 artist:串 + 风格词
+  const root=apiRoot(p.baseUrl);
+  const sys='你是画师串反推引擎。分析用户图片的画风，合成一条可直接用于 AI 绘画的画师串。规则：1) 画师名必须是你确信真实存在的 pixiv/danbooru 画师名（罗马字原名），挑画风最接近的 1-3 位，写成 artist:名字 格式；2) 再补 3-6 个 danbooru 风格/媒介/光影词（如 painterly, soft shading, cinematic lighting, watercolor (medium)）；3) 只看画风，忽略画面内容（人物、主题、场景一律不写）；4) 画师名拿不准就少写，宁缺毋滥，禁止编造不存在的名字。输出严格 JSON，无 markdown 无解释：{"n":"中文串名8字内","s":"artist:xxx, artist:yyy, 风格词","d":"中文一句话风味说明"}';
+  const content=[{type:'text',text:sys},{type:'image_url',image_url:{url:img}}];
+  const r=await fetch(root+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({
+    model:p.chatModel,messages:[{role:'user',content}],temperature:0.3,max_tokens:300
+  })});
+  if(!r.ok){
+    if(r.status===400||r.status===422)throw new Error('理解模型不支持看图，去「配置」页换 gpt-4o-mini、gemini flash 这类带视觉的');
+    const t=await r.text().catch(()=>'');
+    throw new Error('HTTP '+r.status+(t&&t.length<120?' '+t:''));
+  }
+  const j=await r.json();
+  const c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+  const mm=c.match(/\{[\s\S]*\}/);
+  if(!mm)throw new Error('模型没返回画师串');
+  const o=JSON.parse(mm[0]);
+  const s=String(o.s||'').replace(/\s+/g,' ').trim();
+  if(!s)throw new Error('模型没给出串内容');
+  return {n:String(o.n||'图生串').slice(0,12),s:s.slice(0,300),d:String(o.d||'').slice(0,80)};
+}
 $('#btnVibe').onclick=()=>$('#fileVibe').click();
 $('#fileVibe').onchange=async e=>{
   const fs=[...e.target.files].slice(0,3);
@@ -5157,6 +5180,56 @@ $('#ocShootGo').onclick=async()=>{
 };
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
+function extractArtists(en){ // 从提示词抽 artist: 段（剥掉 {} [] () 权重壳）与剩余风格词
+  const t=String(en||'').replace(/[{\[]+(artist:[^}\]]*)[}\]]+/gi,'$1').replace(/\((artist:[^)]*?)\)(?::[\d.]+)?/gi,'$1');
+  const arts=[...new Set((t.match(/artist:[^,]+/gi)||[]).map(s=>s.trim()))];
+  const rest=t.replace(/artist:[^,]+/gi,'').replace(/\(\s*[^()]*?:[\d.]+\s*\)/g,'').split(',').map(s=>s.trim().replace(/^[,{\[\s]+|[,}\]\s]+$/g,'')).filter(s=>s&&s.length<40&&!/^\d/.test(s));
+  return {str:arts.join(', '),rest:[...new Set(rest)].slice(0,8).join(', '),names:arts.map(a=>a.replace(/^artist:/i,'').trim())};
+}
+function saveMsgArtists(m,imgSrc){ // 生成图一键存串：解析提示词里的画师串 → 调和成我的串 → 图设为小样头像（零 API）
+  const ex=extractArtists(m.en||m.prompt||'');
+  if(!ex.str)return toast('这条提示词里没解析到画师串，试试「看图反推」');
+  const def=ex.rest?ex.str+', '+ex.rest:ex.str;
+  const nm=(ex.names.slice(0,2).join('+')||'提取串').slice(0,12);
+  openTextOv('存为画师串 · '+nm,def,{editable:true,extra:[
+    {label:'存串+图设小样',cls:'pri',fn:async v=>{
+      const s=String(v||'').replace(/\s+/g,' ').trim();
+      if(!s)return toast('串内容不能为空');
+      const dup=S.myCombos.find(c=>String(c.s).toLowerCase()===s.toLowerCase());
+      if(dup)return toast('这条串已存过：「'+dup.n+'」');
+      S.myCombos.unshift({id:uid(),n:nm,s:s.slice(0,300),d:'图串提取'});
+      store.set('xy_mycombos',S.myCombos);
+      if(imgSrc){try{const full=await toDataURL(imgSrc);const sm=await shrinkImg(full,384,.82);S.libimg[s]={img:sm||full,ts:Date.now(),st:1};await persistLibImg();}catch(e){}}
+      try{renderLibTabs();renderLibList();}catch(e){}
+      toast('「'+nm+'」已入词库 · 我的串'+(imgSrc?'，这张图成了它的头像':''));
+    }},
+    {label:'复制串',fn:v=>copyTxt(String(v||''),'串已复制')}
+  ]});
+}
+async function imgToArtist(src){ // 看图反推（无提示词时的兜底）：视觉模型分析画风合成画师串
+  const p=activePreset();
+  if(!p||!p.chatModel)return toast('先去「配置」页选好理解模型（要支持看图的）');
+  toast('看图反推画师串中…');
+  try{
+    const img=await toDataURL(src);
+    if(!img||!img.startsWith('data:'))return toast('图片数据没取到，换一张试试');
+    const small=await shrinkImg(img,512,.85);
+    const r=await apiArtistFromImg(p,small||img);
+    openTextOv('图生画师串 · '+r.n,'【画师串】\n'+r.s+'\n\n【风味】'+r.d,{editable:true,extra:[
+      {label:'复制串',fn:v=>copyTxt(v,'串已复制')},
+      {label:'存串+图设小样',cls:'pri',fn:async v=>{
+        const s=String(v||'').replace(/\s+/g,' ').trim();
+        if(!s)return toast('串内容不能为空');
+        const dup=S.myCombos.find(c=>String(c.s).toLowerCase()===s.toLowerCase());
+        if(!dup){S.myCombos.unshift({id:uid(),n:r.n,s:s.slice(0,300),d:'图生反推'});store.set('xy_mycombos',S.myCombos);}
+        S.libimg[s]={img:await shrinkImg(img,384,.82)||img,ts:Date.now(),st:1};
+        await persistLibImg();
+        try{renderLibTabs();renderLibList();}catch(e){}
+        toast('「'+r.n+'」已入库'+(dup?'（串已存过，补了小样）':'，这张图当了头像'));
+      }}
+    ]});
+  }catch(e){toast('图生串失败：'+String(e&&e.message||e).slice(0,60));}
+}
 async function setImgAsFace(src){
   const cards=ocCards();
   if(!cards.length)return toast('先去 OC 里世界（+号面板）建角色');
