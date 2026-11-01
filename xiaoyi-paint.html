@@ -5223,6 +5223,17 @@ $('#ocShootGo').onclick=async()=>{
 };
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
+function isFigureTag(t){ // 形象词判别：存串只留「画风+人物类型」，滤掉长相/发型/妆容/服装/配饰/姿势——不然存一次串就把某个形象锁死，以后出图全员撞脸
+  t=String(t).toLowerCase();
+  if(/^\d+\s*(boy|girl|boys|girls|other)s?$/.test(t))return false; // 1boy/2girls 人物数量类型保留
+  if(/(male|female) focus|^\d\+?(boy|girl)s?\b/.test(t))return false;
+  return /hair|bangs|ponytail|twintails|braid|ahoge|wolf cut|bob cut|\beyes\b|\beyebrows\b|eyeshadow|makeup|lipstick|\blips\b|blush|freckles|mole|beard|stubble|\bskin\b|dark circles|jawline/
+    .test(t)
+  || /\b(jacket|hoodie|shirt|pants|skirt|dress|coat|uniform|sweater|scarf|hat|cap|glasses|sunglasses|earrings|earring|necklace|choker|gloves|boots|shoes|armor|helmet|tattoo|piercing|ring|watch|headphones|phone)\b/.test(t)
+  || /\b(smile|smirk|grin|grinning|laughing|frown|pouting|crying|tears|tearing up|open mouth|closed mouth|parted lips|ahegao)\b/.test(t)
+  || /\b(sitting|standing|walking|running|lying|kneeling|crouching|looking at viewer|looking away|looking back|looking down|looking up|arms crossed|arms up|hands in pockets|hand up|hand on hip|holding|pointing|waving|head tilt|head down)\b/.test(t)
+  || /\b(mature male|mature female|muscular|abs|old man|old male|elderly|teenage|child|young man|young woman|tall|fat|thin|slim|dark skin|colored skin)\b/.test(t);
+}
 function extractArtists(en){ // 从提示词抽 artist: 段——权重壳原样保留（{artist:x} 加权 / (artist:x:1.25) 数值权重），调过的味道不归零
   const segs=String(en||'').split(',');
   const arts=[],seen=new Set();
@@ -5233,7 +5244,7 @@ function extractArtists(en){ // 从提示词抽 artist: 段——权重壳原样
     if(seen.has(key))return;seen.add(key);
     arts.push(s);
   });
-  const rest=segs.filter(s=>!/artist:/i.test(s)).map(s=>s.trim().replace(/\([^()]*?:[\d.]+\)/g,'')).map(s=>s.replace(/^[,{[\s]+|[,)}\]\s]+$/g,'').trim()).filter(s=>s&&s.length<40&&!/^\d/.test(s));
+  const rest=segs.filter(s=>!/artist:/i.test(s)).map(s=>s.trim().replace(/\([^()]*?:[\d.]+\)/g,'')).map(s=>s.replace(/^[,{[\s]+|[,)}\]\s]+$/g,'').trim()).filter(s=>s&&s.length<40&&!/^\d/.test(s)&&!isFigureTag(s));
   return {str:arts.join(', '),rest:[...new Set(rest)].slice(0,8).join(', '),names:arts.map(a=>a.replace(/^[{[\(\s]*artist:/i,'').replace(/[\)\]:\d.\s}]+$/g,'').replace(/^[{[\s]+/,'').trim())};
 }
 function saveMsgArtists(m,imgSrc){ // 生成图一键存串：解析提示词里的画师串 → 调和成我的串 → 图设为小样头像（零 API）
