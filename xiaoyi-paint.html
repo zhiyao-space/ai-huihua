@@ -1344,7 +1344,8 @@ const MENU_ICONS={
   undo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5L3.8 9.2 8 13.4"/><path d="M4 9.2h10a6 6 0 0 1 0 12h-4"/></svg>',
   redo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5l4.2 4.2L16 13.4"/><path d="M20 9.2H10a6 6 0 0 0 0 12h4"/></svg>',
   brush:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18a2 2 0 0 0 1.8 3h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7.5 14h9"/></svg>',
-  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>'
+  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>'
 };
 function openSheet(title,items){
   $('#sheetTitle').textContent=title;
@@ -2130,6 +2131,14 @@ const ARTIST_LIB=[
   {c:'combo',n:'小众伪厚涂男',s:'artist:896, artist:rezi, artist:funge',d:'腰部画师叠涂，笔触厚而不糊'},
   {c:'combo',n:'清俊笔触男',s:'artist:ranru, artist:hejinhy, artist:piyotype',d:'细腻小众组，柔光清冷'},
   {c:'combo',n:'华丽暗黑厚涂',s:'artist:huahua025, artist:896',d:'华服暗调，收藏级质感'},
+  {c:'combo',n:'灰调眼影少年',s:'artist:ask (zy933), artist:hakuro, limited palette, red eyeshadow, pale skin, delicate lineart',d:'微博系冷清少年感，红眼眶点睛'},
+  {c:'combo',n:'冷灰性冷淡',s:'artist:noxmoony, artist:hakuro, limited palette, muted colors, white background',d:'黑白灰+一点肤色，克制高级'},
+  {c:'combo',n:'韩系冷调大片',s:'artist:songjikyo, artist:inplpmo, muted colors, soft lighting, upper body',d:'低饱和韩系杂志感'},
+  {c:'combo',n:'素白雕塑感',s:'artist:rupal, artist:kjnancing, greyscale, pale skin, white background',d:'近乎单色的干净立体'},
+  {c:'combo',n:'水感清透男',s:'artist:yuunium, artist:ranru, watercolor \\(medium\\), soft edges, pale colors',d:'水彩淡彩透光感'},
+  {c:'combo',n:'夜色电影感',s:'artist:guweiz, artist:aoi ogata, cinematic lighting, muted colors',d:'暗调叙事光，情绪拉满'},
+  {c:'combo',n:'潮流感配饰男',s:'artist:tailer231, artist:sakon0426, earrings, upper body, detailed face',d:'耳环配饰，现代感精致'},
+  {c:'combo',n:'铅笔质感男',s:'artist:keeggy, pencil \\(medium\\), sketch, monochrome, cross-hatching',d:'排线素描味，手稿感'},
   {c:'style',n:'伪厚涂笔触',s:'semi-realistic, painterly, impasto, detailed painting'},
   {c:'style',n:'水彩淡彩',s:'watercolor \\(medium\\), soft edges, pale colors'},
   {c:'style',n:'油画厚涂',s:'oil painting \\(medium\\), impasto, textured brushwork'},
@@ -3719,6 +3728,11 @@ function openSnips(){
 $('#btnPlus').onclick=()=>{
   openSheet('绘画工具',[
     {icon:'copy',txt:'上传参考图（最多 3 张）',fn:()=>$('#fileRef').click()},
+    {icon:'eye',txt:'识图提取画师串（传图 AI 反推画风）',fn:()=>{
+      const i=document.createElement('input');i.type='file';i.accept='image/*';
+      i.onchange=async e=>{const f=e.target.files[0];if(!f)return;const d=await fileToDataURL(f);if(d)imgToArtist(d);};
+      i.click();
+    }},
     {icon:'quote',txt:'插入常用提词片段',fn:openSnips},
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
     {icon:'brush',txt:'自定义画风配方器（AI 辅助写画风）',fn:openRecipe},
