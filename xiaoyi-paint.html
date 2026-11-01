@@ -1727,7 +1727,8 @@ const MENU_ICONS={
   undo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5L3.8 9.2 8 13.4"/><path d="M4 9.2h10a6 6 0 0 1 0 12h-4"/></svg>',
   redo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5l4.2 4.2L16 13.4"/><path d="M20 9.2H10a6 6 0 0 0 0 12h4"/></svg>',
   brush:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L4.8 18a2 2 0 0 0 1.8 3h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7.5 14h9"/></svg>',
-  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>'
+  dice:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>'
 };
 function openSheet(title,items){
   $('#sheetTitle').textContent=title;
@@ -2464,10 +2465,21 @@ function openParams(){
       const w=(S.artistsW[a.id]??1);
       const row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:8px;border:1px solid '+(a.on?'var(--rule2)':'var(--rule)')+';border-radius:12px;padding:7px 10px;'+(a.on?'':'opacity:.55');
+      const tim=libThumbOf(a.str); // 快捷开关也带小样：调权重时看着脸调，不用记串名
+      const thm=tim
+        ?'<img loading="lazy" src="'+tim+'" alt="" style="width:38px;height:38px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--hover);border:1px solid var(--rule);cursor:zoom-in">'
+        :'<span style="width:38px;height:38px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;border:1px dashed var(--rule2);color:var(--faint);font-size:10px;background:var(--elev)">'+esc((a.name||a.str||'?').slice(0,2))+'</span>';
       row.innerHTML='<input type="checkbox" '+(a.on?'checked':'')+' style="width:17px;height:17px;accent-color:var(--accent);flex:0 0 auto">'
+        +thm
         +'<span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.name||a.str)+'</span>'
-        +'<input type="range" min="0.2" max="1.5" step="0.05" value="'+w+'" title="画师权重" style="width:88px;flex:0 0 auto">'
+        +'<input type="range" min="0.2" max="1.5" step="0.05" value="'+w+'" title="画师权重" style="width:76px;flex:0 0 auto">'
         +'<span class="wv" style="font-size:11px;color:var(--muted);width:32px;text-align:right;flex:0 0 auto">'+w.toFixed(2)+'</span>';
+      const thImg=row.querySelector('img');
+      if(thImg)thImg.onclick=async()=>{
+        const cur=await libViewOf(a.str);
+        if(cur)openViewer({text:'画师小样 · '+(a.name||'自定义串'),en:a.str},cur);
+        else toast('这条还没有小样图，去「画风」页出小样或补样');
+      };
       row.querySelector('input[type=checkbox]').onchange=e=>{
         a.on=e.target.checked;
         row.style.opacity=a.on?'1':'.55';
@@ -2798,6 +2810,12 @@ const ARTIST_LIB=[
   {c:'unisex',n:'iXima',s:'artist:iXima',d:'初音官方级，清透标准'},
   {c:'unisex',n:'rurudo',s:'artist:rurudo',d:'透明感水彩，清新万能'},
   {c:'unisex',n:'reoen',s:'artist:reoen',d:'精致写实美型，控光大师'},
+  {c:'unisex',n:'kawacy',s:'artist:kawacy',d:'光影叙事厚涂，插画风剧情感'},
+  {c:'unisex',n:'shexyo',s:'artist:shexyo',d:'写实系厚涂，肌理细腻大胆'},
+  {c:'unisex',n:'loundrey',s:'artist:loundrey',d:'清冷透明感，灰调高级'},
+  {c:'unisex',n:'loika',s:'artist:loika',d:'水彩晨光，清新通透'},
+  {c:'unisex',n:'vofan',s:'artist:vofan',d:'空气感光影，台系治愈'},
+  {c:'unisex',n:'hews',s:'artist:hews',d:'个性线条，动感诙谐'},
   {c:'unisex',n:'cotta',s:'artist:cotta',d:'清秀柔和，男女皆水润'},
   {c:'unisex',n:'ponmaro',s:'artist:ponmaro',d:'美型圆润，元气通透'},
   {c:'unisex',n:'wataboku',s:'artist:wataboku',d:'美型厚涂，情绪光高级'},
@@ -2875,6 +2893,24 @@ const ARTIST_LIB=[
   {c:'combo',n:'小众伪厚涂男',s:'artist:896, artist:rezi, artist:funge',d:'腰部画师叠涂，笔触厚而不糊'},
   {c:'combo',n:'清俊笔触男',s:'artist:ranru, artist:hejinhy, artist:piyotype',d:'细腻小众组，柔光清冷'},
   {c:'combo',n:'华丽暗黑厚涂',s:'artist:huahua025, artist:896',d:'华服暗调，收藏级质感'},
+  {c:'combo',n:'灰调眼影少年',s:'artist:ask (zy933), artist:hakuro, limited palette, red eyeshadow, pale skin, delicate lineart',d:'微博系冷清少年感，红眼眶点睛'},
+  {c:'combo',n:'冷灰性冷淡',s:'artist:noxmoony, artist:hakuro, limited palette, muted colors, white background',d:'黑白灰+一点肤色，克制高级'},
+  {c:'combo',n:'韩系冷调大片',s:'artist:songjikyo, artist:inplpmo, muted colors, soft lighting, upper body',d:'低饱和韩系杂志感'},
+  {c:'combo',n:'素白雕塑感',s:'artist:rupal, artist:kjnancing, greyscale, pale skin, white background',d:'近乎单色的干净立体'},
+  {c:'combo',n:'水感清透男',s:'artist:yuunium, artist:ranru, watercolor \\(medium\\), soft edges, pale colors',d:'水彩淡彩透光感'},
+  {c:'combo',n:'夜色电影感',s:'artist:guweiz, artist:aoi ogata, cinematic lighting, muted colors',d:'暗调叙事光，情绪拉满'},
+  {c:'combo',n:'潮流感配饰男',s:'artist:tailer231, artist:sakon0426, earrings, upper body, detailed face',d:'耳环配饰，现代感精致'},
+  {c:'combo',n:'铅笔质感男',s:'artist:keeggy, pencil \\(medium\\), sketch, monochrome, cross-hatching',d:'排线素描味，手稿感'},
+  {c:'combo',n:'赛车手胶片感',s:'artist:896, artist:h2so4, limited palette, muted colors, film grain, leather jacket, helmet, pale skin',d:'低饱和厚涂+噪点，机车少年'},
+  {c:'combo',n:'红发病娇机车',s:'artist:huahua025, artist:896, multicolored hair, red hair, black hair, wolf cut, red lips, eyeshadow, earrings, necklace',d:'红黑狼尾+病娇苍白，小红书爆款味'},
+  {c:'combo',n:'胶片氛围病娇',s:'artist:896, artist:rezi, limited palette, film grain, cinematic lighting, pale skin, red lips, cigarette',d:'烟感颓废，暗调情绪片'},
+  {c:'combo',n:'运动系三条纹',s:'artist:h2so4, artist:tailer231, track jacket, red eyeshadow, red lips, pale skin, white background, upper body',d:'阿迪外套清冷男，红妆点缀'},
+  {c:'combo',n:'半写实红妆男',s:'artist:h2so4, artist:kjnancing, red eyeshadow, red lips, facial mark, black hair, short hair, white background',d:'脸上红印，清冷半写实'},
+  {c:'combo',n:'半写实仙气组',s:'artist:wlop, artist:kawacy, ethereal, light particles, detailed painting',d:'仙气光粒，叙事级厚涂'},
+  {c:'combo',n:'清透灰调组',s:'artist:loundrey, artist:miv4t, translucent, muted colors, soft lighting',d:'双清冷神串，透明感灰调'},
+  {c:'combo',n:'晨光水彩组',s:'artist:loika, artist:vofan, soft lighting, pale colors, morning',d:'晨光空气感，治愈清新'},
+  {c:'combo',n:'黑金属锁链男',s:'artist:h2so4, artist:896, black background, pale skin, messy hair, hair over eyes, nose piercing, neck tattoo, choker, chain necklace, leather jacket',d:'哥特钉链病白，暗夜味拉满'},
+  {c:'combo',n:'暗黑哥特变体',s:'artist:huahua025, artist:aoi ogata, black background, gothic, jewelry, tattoo, parted lips, pale skin',d:'纹身配饰叠满，暗调哥特'},
   {c:'style',n:'伪厚涂笔触',s:'semi-realistic, painterly, impasto, detailed painting'},
   {c:'style',n:'水彩淡彩',s:'watercolor \\(medium\\), soft edges, pale colors'},
   {c:'style',n:'油画厚涂',s:'oil painting \\(medium\\), impasto, textured brushwork'},
@@ -2951,6 +2987,8 @@ const ARTIST_LIB=[
   {c:'style',n:'瓷肌精致感',s:'doll, pale skin, delicate features, detailed eyes, soft lighting',d:'人偶瓷肌，五官精雕'},
   {c:'style',n:'华丽人偶装',s:'ball-jointed doll, ornate, lace, frills, elegant',d:'人偶配华丽蕾丝装'},
   {c:'style',n:'暗黑人偶馆',s:'ball-jointed doll, dark background, gothic, lace, realistic',d:'暗调哥特人偶，收藏馆氛围'},
+  {c:'style',n:'黑金属质感',s:'semi-realistic, painterly, dark background, muted colors, high contrast, glossy highlights, gothic',d:'黑底病白厚涂，金属高光暗夜味'},
+  {c:'style',n:'病娇暗调男',s:'pale skin, dark background, low key lighting, sharp jawline, parted lips, male focus',d:'病白清冷，暗夜男像'},
   /* ---- 镜头构图 ---- */
   {c:'shot',n:'面部特写',s:'close-up, face focus, detailed eyes'},
   {c:'shot',n:'极端特写',s:'extreme close-up, macro'},
@@ -4464,6 +4502,11 @@ function openSnips(){
 $('#btnPlus').onclick=()=>{
   openSheet('绘画工具',[
     {icon:'copy',txt:'上传参考图（最多 3 张）',fn:()=>$('#fileRef').click()},
+    {icon:'eye',txt:'识图提取画师串（传图 AI 反推画风）',fn:()=>{
+      const i=document.createElement('input');i.type='file';i.accept='image/*';
+      i.onchange=async e=>{const f=e.target.files[0];if(!f)return;const d=await fileToDataURL(f);if(d)imgToArtist(d);};
+      i.click();
+    }},
     {icon:'quote',txt:'插入常用提词片段',fn:openSnips},
     {icon:'redo',txt:'英文提词翻译',fn:openTrans},
     {icon:'brush',txt:'自定义画风配方器（AI 辅助写画风）',fn:openRecipe},
@@ -5991,6 +6034,17 @@ $('#ocShootGo').onclick=async()=>{
 };
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
+function isFigureTag(t){ // 形象词判别：存串只留「画风+人物类型」，滤掉长相/发型/妆容/服装/配饰/姿势——不然存一次串就把某个形象锁死，以后出图全员撞脸
+  t=String(t).toLowerCase();
+  if(/^\d+\s*(boy|girl|boys|girls|other)s?$/.test(t))return false; // 1boy/2girls 人物数量类型保留
+  if(/(male|female) focus|^\d\+?(boy|girl)s?\b/.test(t))return false;
+  return /hair|bangs|ponytail|twintails|braid|ahoge|wolf cut|bob cut|\beyes\b|\beyebrows\b|eyeshadow|makeup|lipstick|\blips\b|blush|freckles|mole|beard|stubble|\bskin\b|dark circles|jawline/
+    .test(t)
+  || /\b(jacket|hoodie|shirt|pants|skirt|dress|coat|uniform|sweater|scarf|hat|cap|glasses|sunglasses|earrings|earring|necklace|choker|gloves|boots|shoes|armor|helmet|tattoo|piercing|ring|watch|headphones|phone)\b/.test(t)
+  || /\b(smile|smirk|grin|grinning|laughing|frown|pouting|crying|tears|tearing up|open mouth|closed mouth|parted lips|ahegao)\b/.test(t)
+  || /\b(sitting|standing|walking|running|lying|kneeling|crouching|looking at viewer|looking away|looking back|looking down|looking up|arms crossed|arms up|hands in pockets|hand up|hand on hip|holding|pointing|waving|head tilt|head down)\b/.test(t)
+  || /\b(mature male|mature female|muscular|abs|old man|old male|elderly|teenage|child|young man|young woman|tall|fat|thin|slim|dark skin|colored skin)\b/.test(t);
+}
 function extractArtists(en){ // 从提示词抽 artist: 段——权重壳原样保留（{artist:x} 加权 / (artist:x:1.25) 数值权重），调过的味道不归零
   const segs=String(en||'').split(',');
   const arts=[],seen=new Set();
@@ -6001,7 +6055,7 @@ function extractArtists(en){ // 从提示词抽 artist: 段——权重壳原样
     if(seen.has(key))return;seen.add(key);
     arts.push(s);
   });
-  const rest=segs.filter(s=>!/artist:/i.test(s)).map(s=>s.trim().replace(/\([^()]*?:[\d.]+\)/g,'')).map(s=>s.replace(/^[,{[\s]+|[,)}\]\s]+$/g,'').trim()).filter(s=>s&&s.length<40&&!/^\d/.test(s));
+  const rest=segs.filter(s=>!/artist:/i.test(s)).map(s=>s.trim().replace(/\([^()]*?:[\d.]+\)/g,'')).map(s=>s.replace(/^[,{[\s]+|[,)}\]\s]+$/g,'').trim()).filter(s=>s&&s.length<40&&!/^\d/.test(s)&&!isFigureTag(s));
   return {str:arts.join(', '),rest:[...new Set(rest)].slice(0,8).join(', '),names:arts.map(a=>a.replace(/^[{[\(\s]*artist:/i,'').replace(/[\)\]:\d.\s}]+$/g,'').replace(/^[{[\s]+/,'').trim())};
 }
 function saveMsgArtists(m,imgSrc){ // 生成图一键存串：解析提示词里的画师串 → 调和成我的串 → 图设为小样头像（零 API）
