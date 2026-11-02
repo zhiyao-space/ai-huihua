@@ -4506,7 +4506,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
    +'<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--rule);border-radius:12px;padding:9px 12px;margin-bottom:10px"><span style="font-size:12.5px;font-weight:600">启用画风锁</span><input type="checkbox" id="slOn" '+(L.on?'checked':'')+' style="width:20px;height:20px;accent-color:#111"></div>'
    +'<div class="field"><label>画风串（英文 tag · 画风指纹）</label><textarea id="slEn" rows="3" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.en||'')+'</textarea></div>'
    +'<div class="field"><label>长相串（可选 · 人物长相类型锚）</label><textarea id="slFace" rows="2" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.face||'')+'</textarea></div>'
-   +'<div class="field"><label>从最近出图提取（点选一张画风满意的）</label><div id="slStrip" style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px"></div>'
+   +'<div class="field"><label>提取来源（点选一张画风满意的，或从本地上传）</label><div id="slStrip" style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px"></div>'
+   +'<button class="mini" id="slUp" type="button" style="width:100%;margin-top:6px">📷 从本地上传参考图</button><input type="file" id="slFile" accept="image/*" style="display:none">'
    +'<div style="display:flex;gap:6px;margin-top:8px"><button class="mini pri" id="slGetStyle" type="button" style="flex:1">🎨 提取画风</button><button class="mini" id="slGetFace" type="button" style="flex:1">👤 提取长相</button></div></div>'
    +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>';
   const strip=wrap.querySelector('#slStrip');
@@ -4520,7 +4521,20 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     strip.appendChild(im);
     if(i===0)setTimeout(()=>{if(im.complete&&im.naturalWidth)im.onclick();else im.onload=im.onclick;},0);
   });
-  if(!imgs.length)strip.innerHTML='<span style="font-size:11.5px;color:var(--faint)">还没有出图记录，先画几张再来提取</span>';
+  if(!imgs.length)strip.innerHTML='<span style="font-size:11.5px;color:var(--faint)">还没有出图记录，可从本地上传参考图</span>';
+  const fu=wrap.querySelector('#slFile'); // 本地上传：任何图都能当提取源，不受会话出图记录限制
+  wrap.querySelector('#slUp').onclick=()=>fu.click();
+  fu.onchange=()=>{
+    const f=fu.files&&fu.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{
+      const im=document.createElement('img');im.src=String(r.result);
+      im.style.cssText='width:56px;height:56px;border-radius:10px;object-fit:cover;border:2px solid transparent;cursor:pointer;flex:0 0 auto';
+      im.onclick=()=>{sel=im.src;strip.querySelectorAll('img').forEach(x=>x.style.borderColor='transparent');im.style.borderColor='#111';};
+      strip.prepend(im);im.onclick();fu.value='';
+    };
+    r.readAsDataURL(f);
+  };
   const b1=wrap.querySelector('#slGetStyle'),b2=wrap.querySelector('#slGetFace');
   const busy=b=>{b1.disabled=b;b2.disabled=b;if(b)b1.textContent='提取中…';else b1.textContent='🎨 提取画风';};
   b1.onclick=async()=>{
