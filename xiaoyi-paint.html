@@ -1756,7 +1756,7 @@ function openSheet(title,items){
 }
 let ovHist=false;
 function ovOpen(){if(!ovHist){ovHist=true;try{history.pushState({xyov:1},'');}catch(e){}}}
-function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv,#ocOv,#mtxOv,#inpOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');if(ovHist){ovHist=false;try{history.back();}catch(e){}}}
+function closeOverlays(){$$('#sheetOv,#modalOv,#recipeOv,#pvOv,#libOv,#ocOv,#mtxOv,#inpOv').forEach(o=>o.classList.remove('show'));$('#viewer').classList.remove('show');const crd=$('#comicRd');if(crd)crd.remove();if(ovHist){ovHist=false;try{history.back();}catch(e){}}}
 window.addEventListener('popstate',()=>{if(ovHist){ovHist=false;closeOverlays();}});
 $$('.ov-x').forEach(b=>b.onclick=()=>closeOverlays());
 $$('#sheetOv,#modalOv,#recipeOv,#pvOv,#mtxOv,#inpOv').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeOverlays();}));
@@ -4544,6 +4544,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'水印工坊（文字/素材抠图/AI 画水印）',fn:openWmLab},
     {icon:'redo',txt:'动图工坊（图组动效/AI 视频）',fn:openMotionLab},
     {icon:'quote',txt:'漫画工坊（分镜布局 · 气泡 · OC 互动）',fn:openComicLab},
+    {icon:'quote',txt:'漫画书架（沉浸式追更阅读）',fn:openComicShelf},
   ]);
 };
 
@@ -6551,7 +6552,7 @@ const COMIC_LAYOUTS=[
 const COMIC_SHOTS=[['bust','半身','bust shot'],['close','特写','close-up shot, face focus'],['full','全身','full body, standing'],['wide','远景','wide shot, full scene visible'],['high','俯角','from above, looking down'],['low','仰角','from below, looking up']];
 const COMIC_LTS=[['normal','说'],['think','想'],['shout','喊'],['narr','旁白']];
 const COMIC_SYS='你是漫画分镜编剧。把剧情切成用户要求的格数，每格给画面描述与对白，对白贴合角色人设口吻，短句有戏。输出严格 JSON 无 markdown 无解释：{"panels":[{"desc":"中文画面描述（人物动作表情镜头感，40字内）","lines":[{"who":"角色名（旁白留空）","txt":"对白12字内","type":"normal|think|shout|narr"}]}]}。每格 0-2 条对白，narr 用于旁白铺垫。';
-let CM=store.get('xy_comic',null)||{layout:'p4',lockSeed:false,seed:'',boost:false,pool:[],panels:[]};
+let CM=store.get('xy_comic',null)||{layout:'p4',lockSeed:false,seed:'',boost:false,pool:[],panels:[],bookId:'',title:''};
 const CINP='border:1px solid var(--rule);background:var(--surface);border-radius:10px;padding:7px 10px;font-size:12.5px;color:var(--ink)';
 const comicLay=()=>COMIC_LAYOUTS.find(l=>l.id===CM.layout)||COMIC_LAYOUTS[3];
 const comicSave=()=>store.set('xy_comic',CM);
@@ -6764,7 +6765,12 @@ async function comicRun(btn){ // 逐格生成（通连画师串/参数/滤镜水
     });});
     const out=cv.toDataURL('image/jpeg',.92);
     pushMsg({id:uid(),role:'ai',kind:'image',img:out,prompt:zhAll.join('\n───\n'),text:'📖 漫画页出炉（'+lay.n+' · '+CM.panels.length+' 格），点开看大图',snap:{prompt:'漫画工坊 · '+lay.n,neg,size,seed:CM.lockSeed?CM.seed:'',count:CM.panels.length},ts:Date.now()});
-    switchTab('chat');toast('漫画页放进对话流了');
+    const ti=$('#cTitle');if(ti&&ti.value.trim())CM.title=ti.value.trim(); // 自动收进漫画本，书架沉浸式追更
+    if(!CM.bookId)CM.bookId=uid();
+    let bk=BOOKS.find(b=>b.id===CM.bookId);
+    if(!bk){bk={id:CM.bookId,n:CM.title||('我的漫画 '+(BOOKS.length+1)),pages:[],ts:Date.now()};BOOKS.push(bk);}
+    bk.pages.push(out);bk.ts=Date.now();booksSave();
+    switchTab('chat');toast('已收进《'+bk.n+'》，书架可整本连看');
   }catch(err){toast('生成失败：'+String(err.message||err).slice(0,90));}
   btn.disabled=false;btn.textContent=old;
 }
@@ -6775,6 +6781,7 @@ function openComicLab(){
   comicFit();
   const artsN=S.artists.filter(x=>x.on&&x.str).length;
   wrap.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:8px">选布局 → 每格写剧情对白（OC 直接进分镜互动）→ 生成整页。画面只出画面，对白气泡由前端画上去，可拖动排版，文字永不崩。</div>'
+    +'<input id="cTitle" value="'+esc(CM.title||'')+'" placeholder="漫画标题（收进书架连载用）：如 天台与汽水" style="width:100%;margin-bottom:10px;'+CINP+'">'
     +'<div id="cLayouts" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>'
     +'<div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--hover);margin-bottom:6px"><canvas id="cCv" style="width:100%;display:block;cursor:grab"></canvas></div>'
     +'<div style="font-size:11px;color:var(--faint);margin-bottom:10px">预览里拖气泡调位置 · 画风跟随当前启用的 '+artsN+' 条画师串与生成参数</div>'
@@ -6806,12 +6813,77 @@ function openComicLab(){
     renderComicPrev();comicSave();
   });
   cv.addEventListener('pointerup',()=>drag=null);
+  $('#cTitle').oninput=e=>{CM.title=e.target.value;comicSave();};
   $('#cLock').onchange=e=>{CM.lockSeed=e.target.checked;comicSave();};
   $('#cSeed').oninput=e=>{CM.seed=e.target.value.trim();comicSave();};
   $('#cDice').onclick=()=>{CM.seed=String((Math.random()*4294967295)|0);$('#cSeed').value=CM.seed;comicSave();toast('Seed 已摇：'+CM.seed);};
   $('#cBoost').onchange=e=>{CM.boost=e.target.checked;comicSave();};
   $('#cScript').onclick=()=>comicScript($('#cPlot').value.trim(),$('#cScript'));
   $('#cGo').onclick=()=>comicRun($('#cGo'));
+}
+
+/* ---- 漫画书架 + 沉浸式阅读器：生成的页自动收进本子，像漫画 APP 一样整本上下滑着看 ---- */
+let BOOKS=store.get('xy_comics',[]);
+function booksSave(){ // 页图进 IndexedDB，localStorage 只留引用
+  BOOKS.forEach(b=>{
+    b.pages=(b.pages||[]).map((p,i)=>{
+      if(isData(p)){const k='cb:'+b.id+':'+i+'-'+Date.now();idbSet(k,p);return '@idb:'+k;}
+      return p;
+    });
+  });
+  store.set('xy_comics',BOOKS);
+}
+function openComicShelf(){
+  openSheet('漫画书架（沉浸式追更）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 16px';box.appendChild(wrap);
+  wrap.innerHTML='<div id="cShelf"></div>';
+  renderShelf();
+}
+function renderShelf(){
+  const el=$('#cShelf');if(!el)return;el.innerHTML='';
+  if(!BOOKS.length){el.innerHTML='<div style="font-size:12.5px;color:var(--faint);text-align:center;padding:24px 0">书架还空着。去「漫画工坊」画一页，会自动收进来。</div>';return;}
+  BOOKS.slice().sort((a,b)=>b.ts-a.ts).forEach(bk=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:10px;align-items:center;border:1px solid var(--rule);border-radius:14px;padding:10px;margin-bottom:10px;background:var(--elev)';
+    row.innerHTML='<div style="width:52px;height:70px;border-radius:8px;overflow:hidden;background:var(--hover);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:20px">📖</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(bk.n)+'</div>'
+      +'<div style="font-size:11px;color:var(--faint);margin-top:2px">'+(bk.pages?bk.pages.length:0)+' 页 · '+new Date(bk.ts).toLocaleDateString()+'</div></div>';
+    const acts=document.createElement('div');acts.style.cssText='display:flex;flex-direction:column;gap:4px;flex:0 0 auto';
+    const mk=(t,fn,pri)=>{const x=document.createElement('button');x.type='button';x.className='mini'+(pri?' pri':'');x.textContent=t;x.onclick=fn;acts.appendChild(x);return x;};
+    mk('阅读',()=>openComicReader(bk),true);
+    mk('续画',()=>{CM.bookId=bk.id;CM.title=bk.n;comicSave();closeOverlays();setTimeout(openComicLab,140);});
+    mk('改名',()=>{closeOverlays();setTimeout(()=>openTextOv('改漫画名',bk.n,{editable:true,onSave:v=>{if(v){bk.n=v.slice(0,20);booksSave();}openComicShelf();}}),140);});
+    const del=mk('删除',()=>askConfirm('删除漫画','《'+bk.n+'》整本删掉？',()=>{BOOKS=BOOKS.filter(x=>x.id!==bk.id);booksSave();renderShelf();}));
+    del.style.color='var(--danger)';
+    row.appendChild(acts);
+    const first=bk.pages&&bk.pages[0];
+    if(String(first).startsWith('@idb:'))idbGet(String(first).slice(5)).then(u=>{ // 封面缩略
+      if(u){const c=row.firstChild;c.innerHTML='<img src="'+u+'" style="width:100%;height:100%;object-fit:cover;display:block">';}
+    });
+    el.appendChild(row);
+  });
+}
+function openComicReader(bk){ // 全屏沉浸阅读：上下滚动翻页，滚动到哪页显示哪页
+  const pages=(bk.pages||[]).slice();
+  if(!pages.length)return toast('这本还没页');
+  ovOpen();
+  const ov=document.createElement('div');ov.id='comicRd';
+  ov.style.cssText='position:fixed;inset:0;z-index:96;background:#050506;display:flex;flex-direction:column';
+  ov.innerHTML='<div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:rgba(8,8,10,.92);backdrop-filter:blur(12px);z-index:2">'
+    +'<b style="flex:1;min-width:0;font-size:14px;color:#f4f4f6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(bk.n)+'</b>'
+    +'<span id="rdLab" style="font-size:11.5px;color:#8f8f9a;flex:0 0 auto">1/'+pages.length+'</span>'
+    +'<button id="rdX" type="button" style="width:32px;height:32px;border:0;border-radius:10px;background:rgba(255,255,255,.12);color:#f4f4f6;font-size:15px;flex:0 0 auto">✕</button></div>'
+    +'<div id="rdScroll" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">'
+    +pages.map((p,i)=>'<img src="'+esc(p)+'" data-i="'+i+'" style="width:100%;max-width:640px;display:block;margin:0 auto">').join('')
+    +'<div style="padding:30px 0 calc(36px + env(safe-area-inset-bottom));text-align:center;font-size:11.5px;color:#55555e">— 完 · 共 '+pages.length+' 页 —</div></div>';
+  document.body.appendChild(ov);
+  const sc=ov.querySelector('#rdScroll'),lab=ov.querySelector('#rdLab');
+  sc.addEventListener('scroll',()=>{
+    const st=sc.scrollTop+sc.clientHeight*.35;let cur=1;
+    sc.querySelectorAll('img[data-i]').forEach(im=>{if(im.offsetTop<=st)cur=+im.dataset.i+1;});
+    lab.textContent=cur+'/'+pages.length;
+  },{passive:true});
+  ov.querySelector('#rdX').onclick=()=>{ov.remove();if(ovHist){ovHist=false;try{history.back();}catch(e){}}};
 }
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
