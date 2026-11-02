@@ -593,7 +593,10 @@ select.sel{width:100%;background:var(--elev);border:1px solid var(--rule);border
       <div class="sec">
         <div class="sec-h"><h3>画师串</h3><span class="badge dim" id="artistCount">0/0</span></div>
         <p class="hint">NovelAI 式画风混串：从上面词库点词条进来，或自己写 <b>artist:画师名</b> 叠多个逗号分隔，也可以混风格标签；<b>{词}</b> 加权、<b>[词]</b> 减权。打开开关后每次生成自动拼进提示词。<b>防崩要点：同时开 2-3 条就够，写实系和水动漫系别混串，叠太多五官必崩。</b></p>
-        <div id="artistList"></div>
+        <button class="add-card" id="btnArtistsFold" style="margin-bottom:10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>我的串清单 · <span id="artFoldN">0</span> 条（启用中 <span id="artFoldOn">0</span>）· 点开展开/收起
+        </button>
+        <div id="artistList" style="display:none"></div>
         <button class="add-card" id="btnAddArtist">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>添加画师串
         </button>
@@ -4274,6 +4277,7 @@ function renderArtists(){
   const box=$('#artistList');if(!box)return;
   const onN=S.artists.filter(a=>a.on).length;
   $('#artistCount').textContent=onN+'/'+S.artists.length;
+  const fn=$('#artFoldN'),fo=$('#artFoldOn');if(fn)fn.textContent=S.artists.length;if(fo)fo.textContent=onN;
   if(!S.artists.length){box.innerHTML='<div class="note" style="margin:0 0 10px">还没有画师串，点下方按钮添加，比如：artist:xxx, artist:yyy</div>';return;}
   box.innerHTML='';
   S.artists.forEach(a=>{
@@ -4481,6 +4485,16 @@ function renderComboLab(){
 }
 function renderComboPrev(){const pv=$('#clPrev');if(pv)pv.value=comboStr();}
 $('#btnComboLab').onclick=openComboLab;
+$('#btnArtistsFold').onclick=()=>{ // 我的串清单折叠：默认收起只占一行，展开才铺卡片流，不再把下面的模块顶出屏幕
+  const box=$('#artistList');
+  const open=box.style.display==='none';
+  box.style.display=open?'':'none';
+  const b=$('#btnArtistsFold');
+  b.innerHTML=(open
+    ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 9h16M4 15h16"/></svg>'
+    :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>')
+    +'我的串清单 · '+S.artists.length+' 条（启用中 '+S.artists.filter(a=>a.on).length+'）· 点开'+(open?'收起':'展开');
+};
 function renderSnips(){
   const box=$('#snipList');if(!box)return;
   $('#snipCount').textContent=S.snips.length;
