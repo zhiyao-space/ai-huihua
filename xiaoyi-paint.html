@@ -603,6 +603,9 @@ select.sel{width:100%;background:var(--elev);border:1px solid var(--rule);border
         <button class="add-card" id="btnComboLab" style="margin-top:10px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h7M4 18h10"/><circle cx="18" cy="6" r="2.5"/><circle cx="15.5" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></svg>画师串配方器（选画师 / 手输 tag / 调权重，存为我的串）
         </button>
+        <button class="add-card" id="btnStyleLock" style="margin-top:10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>画风锁（提取画风指纹，防串风漂移）
+        </button>
       </div>
       <div class="sec">
         <div class="sec-h"><h3>常用提词</h3><span class="badge dim" id="snipCount">0</span></div>
@@ -1039,6 +1042,7 @@ const S={
   faceW:store.get('xy_facew',65), // 长相参考图影响强度（%）
   faceCards:store.get('xy_facecards',null)||[], // 角色卡库：[{id,name,face,img,costume}]
   faceActive:store.get('xy_faceactive',''), // 当前启用的角色卡 id（仅做标记）
+  styleLock:store.get('xy_stylelock',null)||{on:false,en:'',face:''}, // 画风锁：从满意出图提取画风指纹，每次出图焊在提示词最前防串风
   wilds:store.get('xy_wilds',null)||{发型:['长发','短发','双马尾','丸子头','波浪卷','高马尾']}, // 通配符词表：名字→候选数组
   labMsgs:store.get('xy_labmsgs',[]), // 画风实验的配方记录（不含图片）
   sessions:store.get('xy_sessions',[]), // 归档的对话会话
@@ -4493,7 +4497,64 @@ function renderComboLab(){
   renderComboPrev();
 }
 function renderComboPrev(){const pv=$('#clPrev');if(pv)pv.value=comboStr();}
+function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长相类型，启用后每次出图焊在提示词最前
+  openSheet('画风锁 · 防串风',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 14px';box.appendChild(wrap);
+  const L=S.styleLock=S.styleLock||{on:false,en:'',face:''};
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">从满意出图里提取「画风指纹」焊进提示词：之后换形象词、换场景、换动作，画风也不漂。长相串可选，用来锁人物长相类型。启用后所有出图（助手对话、OC 拍照、表情包、漫画工坊、衣橱换装）自动拼在最前。</div>'
+   +'<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--rule);border-radius:12px;padding:9px 12px;margin-bottom:10px"><span style="font-size:12.5px;font-weight:600">启用画风锁</span><input type="checkbox" id="slOn" '+(L.on?'checked':'')+' style="width:20px;height:20px;accent-color:#111"></div>'
+   +'<div class="field"><label>画风串（英文 tag · 画风指纹）</label><textarea id="slEn" rows="3" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.en||'')+'</textarea></div>'
+   +'<div class="field"><label>长相串（可选 · 人物长相类型锚）</label><textarea id="slFace" rows="2" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.face||'')+'</textarea></div>'
+   +'<div class="field"><label>从最近出图提取（点选一张画风满意的）</label><div id="slStrip" style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px"></div>'
+   +'<div style="display:flex;gap:6px;margin-top:8px"><button class="mini pri" id="slGetStyle" type="button" style="flex:1">🎨 提取画风</button><button class="mini" id="slGetFace" type="button" style="flex:1">👤 提取长相</button></div></div>'
+   +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>';
+  const strip=wrap.querySelector('#slStrip');
+  const imgs=[];
+  for(let i=S.msgs.length-1;i>=0&&imgs.length<10;i--){const m=S.msgs[i];if(m.kind==='image'){const a=((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean);a.forEach(v=>{if(imgs.length<10)imgs.push(v);});}}
+  let sel=null;
+  imgs.forEach((v,i)=>{
+    const im=document.createElement('img');im.style.cssText='width:56px;height:56px;border-radius:10px;object-fit:cover;border:2px solid transparent;cursor:pointer;flex:0 0 auto';
+    if(String(v).startsWith('@idb:'))idbGet(v.slice(5)).then(d=>{if(d)im.src=d;});else im.src=v;
+    im.onclick=()=>{sel=im.src;strip.querySelectorAll('img').forEach(x=>x.style.borderColor='transparent');im.style.borderColor='#111';};
+    strip.appendChild(im);
+    if(i===0)setTimeout(()=>{if(im.complete&&im.naturalWidth)im.onclick();else im.onload=im.onclick;},0);
+  });
+  if(!imgs.length)strip.innerHTML='<span style="font-size:11.5px;color:var(--faint)">还没有出图记录，先画几张再来提取</span>';
+  const b1=wrap.querySelector('#slGetStyle'),b2=wrap.querySelector('#slGetFace');
+  const busy=b=>{b1.disabled=b;b2.disabled=b;if(b)b1.textContent='提取中…';else b1.textContent='🎨 提取画风';};
+  b1.onclick=async()=>{
+    if(!sel)return toast('先点选一张参考图');
+    const p=activePreset();if(!p||!p.chatModel)return toast('先去「配置」页配好理解模型');
+    busy(true);
+    try{
+      const o=await apiVibe(p,[sel]);
+      wrap.querySelector('#slEn').value=o.en;
+      toast('画风提取好了：'+o.name+'，记得保存');
+    }catch(e){toast('提取失败：'+String(e&&e.message||e).slice(0,80));}
+    busy(false);
+  };
+  b2.onclick=async()=>{
+    if(!sel)return toast('先点选一张参考图');
+    const p=activePreset();if(!p||!p.chatModel)return toast('先去「配置」页配好理解模型');
+    const old=b2.textContent;b2.textContent='提取中…';b2.disabled=true;
+    try{
+      const o=await apiFaceFromImg(p,sel);
+      wrap.querySelector('#slFace').value=o.en;
+      toast('长相提取好了：'+o.zh+'，记得保存');
+    }catch(e){toast('提取失败：'+String(e&&e.message||e).slice(0,80));}
+    b2.textContent=old;b2.disabled=false;
+  };
+  wrap.querySelector('#slOn').onchange=e=>{L.on=e.target.checked;store.set('xy_stylelock',L);toast(L.on?'🔒 画风锁已启用，每次出图自动焊接':'画风锁已关闭');};
+  wrap.querySelector('#slSave').onclick=()=>{
+    L.en=wrap.querySelector('#slEn').value.trim().slice(0,600);
+    L.face=wrap.querySelector('#slFace').value.trim().slice(0,300);
+    store.set('xy_stylelock',L);
+    toast('画风锁已保存'+(L.on?'，出图自动生效':'（当前未启用）'));
+  };
+}
 $('#btnComboLab').onclick=openComboLab;
+$('#btnStyleLock').onclick=openStyleLock;
 $('#btnAddArtist').onclick=()=>{ // 添加画师串：搜词库直接加 / 已有去重 / 手动输入，三通道不再只有手打
   openSheet('添加画师串',[]);
   const box=$('#sheetItems');box.innerHTML='';
@@ -4608,6 +4669,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'OC 衣橱（换装出图）',fn:openWardrobePick},
     {icon:'quote',txt:'角色关系图谱（关系网可视化）',fn:openRelMap},
     {icon:'brush',txt:'海报拼贴工坊（杂志/专辑/拍立得）',fn:openPosterLab},
+    {icon:'quote',txt:'画风锁（提取画风指纹 · 防串风）',fn:openStyleLock},
   ]);
 };
 
@@ -4984,6 +5046,11 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   userText=applyWilds(userText); // 通配符：__词表__ 每张图随机换词
   if(userText)parts.push(userText);
   if(extraPrompt)parts.push(extraPrompt);
+  const LK=S.styleLock; // 画风锁：最高优先级，防换形象词/换场景串风
+  if(LK&&LK.on){
+    if(LK.en)parts.push('【画风锁定·最高优先级】无论画面内容、人物与构图如何变化，整体画风、线条、上色、配色、光影质感都必须严格保持：'+LK.en+'，禁止漂移到其他画风。');
+    if(LK.face)parts.push('【长相类型锁定·最高优先级】画面中主要人物的长相类型必须保持：'+LK.face+'。');
+  }
   const refWord=S.strength>=80?'严格参考所附画风参考图':S.strength>=50?'重点参考所附画风参考图':'仅借鉴所附画风参考图的整体氛围';
   const cw=S.codeWeight>=1.6?'硬性锁定，权重极高':S.codeWeight>=1.2?'严格遵循':S.codeWeight>=0.9?'重点倾向':'轻量倾向';
   if(st){
@@ -5187,6 +5254,29 @@ async function apiVibe(p,imgs){
   if(!mm)throw new Error('模型没返回画风分析');
   const o=JSON.parse(mm[0]);
   return {name:String(o.name||'提炼画风').slice(0,16),zh:String(o.zh||'').slice(0,120),en:String(o.en||'').slice(0,600)};
+}
+async function apiFaceFromImg(p,img){ // 图生长相类型串：看图反推人物长相类型 tag（通用类型，不指名真人）
+  const root=apiRoot(p.baseUrl);
+  const sys='你是人物长相分析引擎。看图中主要人物的长相类型，输出可直接用于 AI 绘画的英文长相类型词，逗号分隔，18词内：年龄段与性别（young woman 等）、发型发色发长（twintails, long black hair 等）、瞳色（red eyes 等）、脸型五官特征（round face, sharp eyes 等）、肤色、表情气质。规则：只写长相类型，忽略服装、姿势、场景、画风；不写真实人名；用通用 danbooru 风格 tag。输出严格 JSON，无 markdown 无解释：{"zh":"中文长相概括20字内","en":"英文tag串"}';
+  const content=[{type:'text',text:sys},{type:'image_url',image_url:{url:img}}];
+  const r=await fetch(root+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({
+    model:p.chatModel,messages:[{role:'user',content}],temperature:0.3,max_tokens:220
+  })});
+  if(!r.ok){
+    if(r.status===400||r.status===422)throw new Error('理解模型不支持看图，去「配置」页换 gpt-4o-mini、gemini flash 这类带视觉的');
+    const t=await r.text().catch(()=>'');
+    throw new Error('HTTP '+r.status+(t&&t.length<120?' '+t:''));
+  }
+  const j=await r.json();
+  const c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+  const mm=c.match(/\{[\s\S]*\}/);
+  if(!mm)throw new Error('模型没返回长相分析');
+  const o=JSON.parse(mm[0]);
+  return {zh:String(o.zh||'').slice(0,40),en:String(o.en||'').slice(0,300)};
+}
+function styleLockEn(){ // 画风锁英文段：启用时拼在所有直接出图 prompt 最前
+  const L=S.styleLock;if(!L||!L.on)return '';
+  return [L.en,L.face].filter(Boolean).join(', ');
 }
 async function apiArtistFromImg(p,img){ // 图生画师串：看图反推画风元素 → 合成 artist:串 + 风格词
   const root=apiRoot(p.baseUrl);
@@ -6034,12 +6124,13 @@ $('#ocFEGo').onclick=async()=>{
   const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
   const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
   const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+  const LKs=styleLockEn(); // 画风锁
   const out=$('#ocFEOut');
   out.innerHTML='<div style="font-size:12px;color:var(--muted)">'+esc(c.name)+' 表情包画图中（4 张，稍等）…</div>';
   const done=[];
   for(const fe of OC_FES){
     try{
-      const prompt=(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||'')+', '+fe[1]+(artsOn?', '+artsOn:'')+', '+QT;
+      const prompt=(LKs?LKs+', ':'')+(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||'')+', '+fe[1]+(artsOn?', '+artsOn:'')+', '+QT;
       const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
       if(src)done.push({k:fe[0],src});
     }catch(e){}
@@ -6112,7 +6203,7 @@ $('#ocShootGo').onclick=async()=>{
   else cnt='1boy, 1girl';
   const tags=[a.tags,b&&b.tags].filter(Boolean).join(', ');
   const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
-  const prompt=[cnt,tags,words,artsOn,QT].filter(Boolean).join(', ');
+  const prompt=[styleLockEn(),cnt,tags,words,artsOn,QT].filter(Boolean).join(', ');
   const btn=$('#ocShootGo');btn.textContent='画图中…';
   try{
     const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?NEG_NAI:SAMP_NEG});
@@ -6806,6 +6897,7 @@ async function comicRun(btn){ // 逐格生成（通连画师串/参数/滤镜水
       const chars=pl.chars.map(ocById).filter(Boolean);
       const shot=(COMIC_SHOTS.find(s=>s[0]===pl.shot)||COMIC_SHOTS[0])[2];
       const zh=[
+        styleLockEn(),
         chars.length?chars.map(c=>(c.gender==='f'?'1girl':'1boy')+'（'+c.name+'：'+(c.tags||'')+'）').join('，'):'',
         pl.extra?'其他人物：'+pl.extra:'',
         '镜头：'+shot,
@@ -7022,7 +7114,7 @@ async function ocOutfitShoot(card,ot,btn){ // 一键换装出图：性别 tag + 
     const arts=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
     let body=(card.gender==='f'?'1girl':'1boy')+', solo, full body, standing, '+(ot.s||'')+', '+(card.tags||'');
     if(CJK_RE.test(body))body=await translatePrompt(p,body);
-    const prompt=[arts,body,QT].filter(Boolean).join(', ');
+    const prompt=[styleLockEn(),arts,body,QT].filter(Boolean).join(', ');
     const src=await apiGenerate(p,{prompt,size:size,neg:neg});
     if(!src){toast('接口没返回图片');return;}
     const out=await postProcess(src);
