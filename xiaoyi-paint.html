@@ -4485,6 +4485,14 @@ function renderComboLab(){
 }
 function renderComboPrev(){const pv=$('#clPrev');if(pv)pv.value=comboStr();}
 $('#btnComboLab').onclick=openComboLab;
+$('#btnAddArtist').onclick=()=>{ // 添加画师串：手写 artist:串 / 风格 tag，逗号分隔，存完默认启用
+  const t=prompt('画师串内容：如 artist:wlop, artist:guweiz，也可混风格 tag，逗号分隔','');
+  if(!t||!t.trim())return;
+  const n=prompt('备注名称（方便记，如：奶白厚涂）：','')||'';
+  S.artists.push({id:uid(),name:n.trim().slice(0,20),str:t.trim().slice(0,300),on:true});
+  persist('xy_artists',S.artists,false);renderArtists();
+  toast('已添加并启用「'+(n.trim()||'新串')+'」');
+};
 $('#btnArtistsFold').onclick=()=>{ // 我的串清单折叠：默认收起只占一行，展开才铺卡片流，不再把下面的模块顶出屏幕
   const box=$('#artistList');
   const open=box.style.display==='none';
