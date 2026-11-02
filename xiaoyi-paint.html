@@ -4543,6 +4543,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'滤镜工坊（调参配方 · AI 调和）',fn:openFilterLab},
     {icon:'quote',txt:'水印工坊（文字/素材抠图/AI 画水印）',fn:openWmLab},
     {icon:'redo',txt:'动图工坊（图组动效/AI 视频）',fn:openMotionLab},
+    {icon:'quote',txt:'漫画工坊（分镜布局 · 气泡 · OC 互动）',fn:openComicLab},
   ]);
 };
 
@@ -6533,6 +6534,284 @@ async function apiVideo(p,{prompt,image}){ // 通用视频接口：POST 提交 �
     if(st.includes('fail')||st.includes('error')||st.includes('cancel'))throw new Error('视频任务失败：'+(jj.error||st));
   }
   throw new Error('等了 5 分钟还没好，任务号 '+id+'（可能还在跑，稍后重试）');
+}
+
+/* ---- 漫画工坊：分镜布局 · 对白气泡 · OC 同框互动（画面纯出图，气泡前端合成可拖动） ---- */
+const COMIC_LAYOUTS=[
+  {id:'p1',n:'单格',pw:3,ph:4,cells:[[1,1,1,1]]},
+  {id:'p2v',n:'上下二格',pw:3,ph:4,cells:[[1,1,1,1],[2,1,1,1]]},
+  {id:'p3v',n:'三段条',pw:3,ph:4,cells:[[1,1,1,1],[2,1,1,1],[3,1,1,1]]},
+  {id:'p4',n:'四格经典',pw:3,ph:4,cells:[[1,1,1,1],[1,2,1,1],[2,1,1,1],[2,2,1,1]]},
+  {id:'p4v',n:'四条竖排',pw:2,ph:3,cells:[[1,1,1,1],[2,1,1,1],[3,1,1,1],[4,1,1,1]]},
+  {id:'p5a',n:'上大下二',pw:3,ph:4,cells:[[1,1,2,2],[3,1,1,1],[3,2,1,1]]},
+  {id:'p5b',n:'上二下大',pw:3,ph:4,cells:[[1,1,1,1],[1,2,1,1],[2,1,2,2]]},
+  {id:'p6',n:'六宫格',pw:3,ph:4,cells:[[1,1,1,1],[1,2,1,1],[2,1,1,1],[2,2,1,1],[3,1,1,1],[3,2,1,1]]},
+  {id:'p7',n:'美漫页',pw:3,ph:4,cells:[[1,1,1,2],[2,1,1,1],[2,2,1,1],[3,1,2,2]]}
+];
+const COMIC_SHOTS=[['bust','半身','bust shot'],['close','特写','close-up shot, face focus'],['full','全身','full body, standing'],['wide','远景','wide shot, full scene visible'],['high','俯角','from above, looking down'],['low','仰角','from below, looking up']];
+const COMIC_LTS=[['normal','说'],['think','想'],['shout','喊'],['narr','旁白']];
+const COMIC_SYS='你是漫画分镜编剧。把剧情切成用户要求的格数，每格给画面描述与对白，对白贴合角色人设口吻，短句有戏。输出严格 JSON 无 markdown 无解释：{"panels":[{"desc":"中文画面描述（人物动作表情镜头感，40字内）","lines":[{"who":"角色名（旁白留空）","txt":"对白12字内","type":"normal|think|shout|narr"}]}]}。每格 0-2 条对白，narr 用于旁白铺垫。';
+let CM=store.get('xy_comic',null)||{layout:'p4',lockSeed:false,seed:'',boost:false,pool:[],panels:[]};
+const CINP='border:1px solid var(--rule);background:var(--surface);border-radius:10px;padding:7px 10px;font-size:12.5px;color:var(--ink)';
+const comicLay=()=>COMIC_LAYOUTS.find(l=>l.id===CM.layout)||COMIC_LAYOUTS[3];
+const comicSave=()=>store.set('xy_comic',CM);
+const comicDefPanel=()=>({chars:[],extra:'',shot:'bust',desc:'',lines:[]});
+function comicFit(){const n=comicLay().cells.length;while(CM.panels.length<n)CM.panels.push(comicDefPanel());if(CM.panels.length>n)CM.panels.length=n;}
+function comicCellRects(lay,W,H){
+  const m=Math.round(W*.035),g=Math.round(W*.022);
+  const rows=Math.max(...lay.cells.map(c=>c[0]+c[2]-1)),cols=Math.max(...lay.cells.map(c=>c[1]+c[3]-1));
+  const iw=(W-m*2-g*(cols-1))/cols,ih=(H-m*2-g*(rows-1))/rows;
+  return lay.cells.map(c=>({x:m+(c[1]-1)*(iw+g),y:m+(c[0]-1)*(ih+g),w:iw*c[3]+g*(c[3]-1),h:ih*c[2]+g*(c[2]-1)}));
+}
+function comicWrap(x,txt,maxW){ // 中文逐字换行
+  const out=[];let cur='';
+  for(const ch of String(txt)){if(x.measureText(cur+ch).width>maxW&&cur){out.push(cur);cur=ch;}else cur+=ch;}
+  if(cur)out.push(cur);return out;
+}
+function comicBubble(x,l,cx,cy,maxW,fs){ // 画一枚气泡，返回 rect 供预览命中拖动
+  const txt=String(l.txt||'').trim()||'…';
+  x.font='600 '+fs+'px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  const lines=comicWrap(x,txt,maxW),lh=fs*1.3,padX=fs*.8,padY=fs*.55;
+  const bw=Math.max(fs*2,Math.max(...lines.map(t=>x.measureText(t).width))+padX*2),bh=lines.length*lh+padY*2;
+  const L=cx-bw/2,T=cy-bh/2;
+  x.save();x.fillStyle=l.type==='narr'?'#f6f6f0':'#fff';x.strokeStyle='#141414';x.lineWidth=Math.max(1.5,fs*.09);x.lineJoin='round';
+  if(l.type==='narr'){x.fillRect(L,T,bw,bh);x.strokeRect(L,T,bw,bh);}
+  else if(l.type==='think'){
+    x.beginPath();x.ellipse(cx,cy,bw/2,bh/2,0,0,7);x.fill();x.stroke();
+    [[cx-bw*.08,cy+bh*.58,fs*.38],[cx+bw*.02,cy+bh*.78,fs*.22]].forEach(p=>{x.beginPath();x.arc(p[0],p[1],p[2],0,7);x.fill();x.stroke();});
+  }else if(l.type==='shout'){
+    x.beginPath();const n=16;
+    for(let i=0;i<n;i++){const a=Math.PI*2*i/n,r=i%2?.8:1.02;const px=cx+Math.cos(a)*bw/2*r,py=cy+Math.sin(a)*bh/2*1.08*r;i?x.lineTo(px,py):x.moveTo(px,py);}
+    x.closePath();x.fill();x.stroke();
+  }else{
+    const r=fs*.6;
+    x.beginPath();x.moveTo(L+r,T);x.arcTo(L+bw,T,L+bw,T+bh,r);x.arcTo(L+bw,T+bh,L,T+bh,r);x.arcTo(L,T+bh,L,T,r);x.arcTo(L,T,L+bw,T,r);x.closePath();x.fill();x.stroke();
+    x.beginPath();x.moveTo(cx-bw*.06,T+bh);x.lineTo(cx+bw*.1,T+bh);x.lineTo(cx-bw*.02,T+bh+fs*.62);x.closePath();x.fill();
+    x.beginPath();x.moveTo(cx-bw*.06,T+bh);x.lineTo(cx-bw*.02,T+bh+fs*.62);x.stroke();
+  }
+  x.fillStyle='#141414';x.textAlign='center';x.textBaseline='middle';
+  lines.forEach((t,k)=>x.fillText(t,cx,T+padY+lh*(k+.5)));
+  x.restore();x.textAlign='left';x.textBaseline='alphabetic';
+  return {x:L,y:T,w:bw,h:bh,cx,cy};
+}
+function comicDrawPage(x,lay,W,H){ // 布局框线 + 格号 + 气泡（预览与成页共用）
+  x.fillStyle='#fbfbf8';x.fillRect(0,0,W,H);
+  const rects=comicCellRects(lay,W,H),fs=W*.028;
+  CM.panels.forEach((p,i)=>{const r=rects[i];if(!r)return;
+    x.strokeStyle='#141414';x.lineWidth=Math.max(2,W*.006);x.strokeRect(r.x,r.y,r.w,r.h);
+    x.font='700 '+fs*.8+'px sans-serif';x.fillStyle='#141414';x.globalAlpha=.32;
+    x.fillText('第 '+(i+1)+' 格',r.x+fs*.7,r.y+fs*1.35);x.globalAlpha=1;
+  });
+  CM.panels.forEach((p,i)=>{const r=rects[i];if(!r)return;
+    p.lines.forEach((l,j)=>{
+      const cx=l.x==null?r.x+r.w*.5:l.x/100*W,cy=l.y==null?r.y+r.h*(.26+.24*j):l.y/100*H;
+      l._rect=comicBubble(x,l,cx,cy,W*.42,fs);
+    });
+  });
+}
+function renderComicLayout(){
+  const box=$('#cLayouts');if(!box)return;box.innerHTML='';
+  COMIC_LAYOUTS.forEach(l=>{
+    const b=document.createElement('button');b.type='button';b.className='oc-chip'+(CM.layout===l.id?' on':'');b.textContent=l.n+'·'+l.cells.length+'格';
+    b.onclick=()=>{CM.layout=l.id;comicFit();comicSave();renderComicLayout();renderComicPanels();renderComicPrev();};
+    box.appendChild(b);
+  });
+}
+function renderComicPool(){
+  const box=$('#cPool');if(!box)return;box.innerHTML='';
+  const cards=ocCards();
+  if(!cards.length){box.innerHTML='<span style="font-size:11px;color:var(--faint)">没建 OC 也能编：AI 会自拟配角</span>';return;}
+  cards.forEach(c=>{
+    const b=document.createElement('button');b.type='button';b.className='oc-chip'+(CM.pool.includes(c.id)?' on':'');b.textContent=c.name;
+    b.onclick=()=>{CM.pool=CM.pool.includes(c.id)?CM.pool.filter(x=>x!==c.id):CM.pool.concat(c.id);comicSave();b.classList.toggle('on');};
+    box.appendChild(b);
+  });
+}
+function renderComicLines(box,pi){
+  const pl=CM.panels[pi];box.innerHTML='';
+  pl.lines.forEach((l,j)=>{
+    const row=document.createElement('div');row.style.cssText='display:flex;gap:5px;margin-bottom:5px;align-items:center';
+    row.innerHTML='<input data-w value="'+esc(l.who||'')+'" placeholder="谁说" style="width:64px;'+CINP+'">'
+      +'<select data-t style="flex:0 0 auto;'+CINP+'">'+COMIC_LTS.map(t=>'<option value="'+t[0]+'"'+(l.type===t[0]?' selected':'')+'>'+t[1]+'</option>').join('')+'</select>'
+      +'<input data-v value="'+esc(l.txt||'')+'" placeholder="对白内容" style="flex:1;min-width:0;'+CINP+'">';
+    const del=document.createElement('button');del.type='button';del.className='mini';del.textContent='×';
+    del.onclick=()=>{pl.lines.splice(j,1);comicSave();renderComicLines(box,pi);renderComicPrev();};
+    row.appendChild(del);
+    row.querySelector('[data-w]').oninput=e=>{l.who=e.target.value;comicSave();};
+    row.querySelector('[data-v]').oninput=e=>{l.txt=e.target.value;comicSave();renderComicPrev();};
+    row.querySelector('[data-t]').onchange=e=>{l.type=e.target.value;comicSave();renderComicPrev();};
+    box.appendChild(row);
+  });
+}
+function renderComicPanels(){
+  const box=$('#cPanels');if(!box)return;comicFit();box.innerHTML='';
+  CM.panels.forEach((pl,i)=>{
+    const d=document.createElement('div');d.style.cssText='border:1px solid var(--rule);border-radius:14px;padding:10px;margin-bottom:10px;background:var(--elev)';
+    d.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:13px">第 '+(i+1)+' 格</b></div>'
+      +'<div data-oc style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>'
+      +'<input data-extra value="'+esc(pl.extra||'')+'" placeholder="其他人物（OC 之外的）：如 神秘白发少年" style="width:100%;margin-bottom:6px;'+CINP+'">'
+      +'<div data-shot style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>'
+      +'<textarea data-desc placeholder="这格发生什么：动作 / 表情 / 场景" style="width:100%;min-height:44px;resize:vertical;'+CINP+'">'+esc(pl.desc||'')+'</textarea>'
+      +'<div data-lines></div>'
+      +'<button data-addl type="button" class="mini" style="margin-top:5px">＋ 对白气泡</button>';
+    const ocbox=d.querySelector('[data-oc]');
+    const cards=ocCards();
+    if(!cards.length)ocbox.innerHTML='<span style="font-size:11px;color:var(--faint)">去 OC 档案馆建角色，就能让 TA 进分镜</span>';
+    cards.forEach(c=>{
+      const b=document.createElement('button');b.type='button';b.className='oc-chip'+(pl.chars.includes(c.id)?' on':'');b.textContent=c.name;
+      b.onclick=()=>{pl.chars=pl.chars.includes(c.id)?pl.chars.filter(x=>x!==c.id):pl.chars.concat(c.id);comicSave();b.classList.toggle('on');};
+      ocbox.appendChild(b);
+    });
+    const sh=d.querySelector('[data-shot]');
+    COMIC_SHOTS.forEach(s=>{
+      const b=document.createElement('button');b.type='button';b.className='oc-chip'+(pl.shot===s[0]?' on':'');b.textContent=s[1];
+      b.onclick=()=>{pl.shot=s[0];comicSave();sh.querySelectorAll('.oc-chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');};
+      sh.appendChild(b);
+    });
+    d.querySelector('[data-extra]').oninput=e=>{pl.extra=e.target.value;comicSave();};
+    d.querySelector('[data-desc]').oninput=e=>{pl.desc=e.target.value;comicSave();};
+    d.querySelector('[data-addl]').onclick=()=>{pl.lines.push({who:'',txt:'',type:'normal',x:null,y:null});comicSave();renderComicLines(d.querySelector('[data-lines]'),i);renderComicPrev();};
+    renderComicLines(d.querySelector('[data-lines]'),i);
+    box.appendChild(d);
+  });
+}
+function renderComicPrev(){ // 页面预览：布局 + 真实气泡排版（可拖）
+  const cv=$('#cCv');if(!cv)return;
+  const lay=comicLay();
+  cv.width=900;cv.height=Math.round(900*lay.ph/lay.pw);
+  comicDrawPage(cv.getContext('2d'),lay,cv.width,cv.height);
+}
+async function comicScript(plot,btn){ // AI 编排分镜：按剧情 + 角色人设写满每格
+  if(!plot)return toast('先写一句剧情');
+  const p=activePreset();if(!p||!p.chatModel)return toast('先去「配置」页选好理解模型');
+  comicFit();
+  const names=CM.pool.map(ocById).filter(Boolean);
+  btn.disabled=true;toast('AI 编排分镜中…');
+  try{
+    const user='格数：'+CM.panels.length+'\n角色：'+(names.length?names.map(c=>c.name+'（'+(c.tags||'')+'）人设：'+String(c.persona||'').slice(0,80)).join('；'):'未指定，可自拟配角')+'\n剧情：'+plot;
+    const r=await fetch(apiRoot(p.baseUrl)+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.chatModel,messages:[{role:'system',content:COMIC_SYS},{role:'user',content:user}],temperature:.7,max_tokens:1200})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();const txt=(((j.choices||[])[0]||{}).message||{}).content||'';
+    const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('没解析到分镜 JSON');
+    const data=JSON.parse(m[0]);const dps=Array.isArray(data.panels)?data.panels:[];
+    if(!dps.length)throw new Error('编排结果为空');
+    CM.panels.forEach((pl,i)=>{
+      const dp=dps[i];if(!dp)return;
+      pl.desc=String(dp.desc||'').slice(0,120);
+      pl.lines=(Array.isArray(dp.lines)?dp.lines:[]).slice(0,3).map(dl=>({who:String(dl.who||'').slice(0,10),txt:String(dl.txt||'').slice(0,40),type:COMIC_LTS.some(t=>t[0]===dl.type)?dl.type:'normal',x:null,y:null}));
+      names.forEach(c=>{if(pl.desc.includes(c.name)&&!pl.chars.includes(c.id))pl.chars.push(c.id);}); // desc 提到谁就自动让谁进格
+    });
+    comicSave();renderComicPanels();renderComicPrev();
+    toast('分镜编好了，去每格微调');
+  }catch(err){toast('编排失败：'+String(err.message||err).slice(0,80));}
+  btn.disabled=false;
+}
+async function comicRun(btn){ // 逐格生成（通连画师串/参数/滤镜水印）→ 拼版 → 叠气泡 → 进对话流
+  const p=activePreset();if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  comicFit();const lay=comicLay();
+  const isNai=p.type==='nai'||/nai[\s_-]?diffusion/i.test(String(p.model||''));
+  const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+  const QT=isNai?'very aesthetic, masterpiece, no text, absurdres':'best quality, amazing quality, very aesthetic, absurdres';
+  const neg=(isNai?NEG_NAI:NEG_STD)+', text, speech bubble, dialogue balloon, watermark, signature'; // 画面内禁字，气泡前端画
+  const size=isNai?'832x1216':(S.size||'1024x1024');
+  if(CM.lockSeed&&!CM.seed){CM.seed=String((Math.random()*4294967295)|0);comicSave();const si=$('#cSeed');if(si)si.value=CM.seed;}
+  btn.disabled=true;const old=btn.textContent;const zhAll=[];
+  try{
+    const imgs=[];
+    for(let i=0;i<CM.panels.length;i++){
+      const pl=CM.panels[i];
+      btn.textContent='画第 '+(i+1)+'/'+CM.panels.length+' 格…';
+      const chars=pl.chars.map(ocById).filter(Boolean);
+      const shot=(COMIC_SHOTS.find(s=>s[0]===pl.shot)||COMIC_SHOTS[0])[2];
+      const zh=[
+        chars.length?chars.map(c=>(c.gender==='f'?'1girl':'1boy')+'（'+c.name+'：'+(c.tags||'')+'）').join('，'):'',
+        pl.extra?'其他人物：'+pl.extra:'',
+        '镜头：'+shot,
+        pl.desc?'画面：'+pl.desc:'',
+        '漫画分镜单格画面，画面内禁止出现任何文字、对话框、气泡、拟声词',
+        CM.boost?'comic panel composition, dynamic framing, expressive poses':'',
+        artsOn,QT
+      ].filter(Boolean).join('，');
+      zhAll.push(zh);
+      let pe=zh;
+      try{if(CJK_RE.test(zh))pe=await translatePrompt(p,zh);}catch(e){}
+      const seed=CM.lockSeed?String(parseInt(CM.seed,10)||0):'';
+      let src=null;
+      try{src=await apiGenerate(p,{prompt:pe,size,neg,seed});}catch(err){toast('第 '+(i+1)+' 格失败：'+String(err.message||err).slice(0,60));}
+      imgs.push(src?await postProcess(src):null); // 失败格占位继续，别一锅端
+    }
+    if(!imgs.some(Boolean))throw new Error('一格都没画出来，检查接口与额度');
+    const W=1200,H=Math.round(W*lay.ph/lay.pw);
+    const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+    const x=cv.getContext('2d');x.fillStyle='#fbfbf8';x.fillRect(0,0,W,H);
+    const rects=comicCellRects(lay,W,H);
+    for(let i=0;i<imgs.length;i++){
+      const r=rects[i];
+      if(imgs[i]){
+        const im=await loadAny(imgs[i]);
+        const sc=Math.max(r.w/im.width,r.h/im.height),iw=im.width*sc,ih=im.height*sc;
+        x.save();x.beginPath();x.rect(r.x,r.y,r.w,r.h);x.clip();x.drawImage(im,r.x+(r.w-iw)/2,r.y+(r.h-ih)/2,iw,ih);x.restore();
+      }else{
+        x.save();x.fillStyle='#efefec';x.fillRect(r.x,r.y,r.w,r.h);
+        x.strokeStyle='#bbb';x.lineWidth=2;x.beginPath();x.moveTo(r.x,r.y);x.lineTo(r.x+r.w,r.y+r.h);x.moveTo(r.x+r.w,r.y);x.lineTo(r.x,r.y+r.h);x.stroke();x.restore();
+      }
+      x.strokeStyle='#141414';x.lineWidth=Math.max(2,W*.006);x.strokeRect(r.x,r.y,r.w,r.h);
+    }
+    const fs=W*.028;
+    CM.panels.forEach((pl,i)=>{const r=rects[i];pl.lines.forEach((l,j)=>{
+      const cx=l.x==null?r.x+r.w*.5:l.x/100*W,cy=l.y==null?r.y+r.h*(.26+.24*j):l.y/100*H;
+      comicBubble(x,l,cx,cy,W*.42,fs);
+    });});
+    const out=cv.toDataURL('image/jpeg',.92);
+    pushMsg({id:uid(),role:'ai',kind:'image',img:out,prompt:zhAll.join('\n───\n'),text:'📖 漫画页出炉（'+lay.n+' · '+CM.panels.length+' 格），点开看大图',snap:{prompt:'漫画工坊 · '+lay.n,neg,size,seed:CM.lockSeed?CM.seed:'',count:CM.panels.length},ts:Date.now()});
+    switchTab('chat');toast('漫画页放进对话流了');
+  }catch(err){toast('生成失败：'+String(err.message||err).slice(0,90));}
+  btn.disabled=false;btn.textContent=old;
+}
+function openComicLab(){
+  openSheet('漫画工坊（分镜布局 · 气泡 · OC 互动）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 16px';box.appendChild(wrap);
+  comicFit();
+  const artsN=S.artists.filter(x=>x.on&&x.str).length;
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);margin-bottom:8px">选布局 → 每格写剧情对白（OC 直接进分镜互动）→ 生成整页。画面只出画面，对白气泡由前端画上去，可拖动排版，文字永不崩。</div>'
+    +'<div id="cLayouts" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>'
+    +'<div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--hover);margin-bottom:6px"><canvas id="cCv" style="width:100%;display:block;cursor:grab"></canvas></div>'
+    +'<div style="font-size:11px;color:var(--faint);margin-bottom:10px">预览里拖气泡调位置 · 画风跟随当前启用的 '+artsN+' 条画师串与生成参数</div>'
+    +'<div style="border:1px dashed var(--rule2);border-radius:14px;padding:10px;margin-bottom:10px">'
+    +'<div style="font-size:12.5px;font-weight:700;margin-bottom:6px">✦ AI 编排分镜</div>'
+    +'<div id="cPool" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px"></div>'
+    +'<div style="display:flex;gap:6px"><input id="cPlot" placeholder="一句话剧情：天台偶遇，开始拌嘴" style="flex:1;min-width:0;'+CINP+'"><button id="cScript" type="button" class="mini pri" style="flex:0 0 auto">编排</button></div></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;font-size:12.5px">'
+    +'<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="cLock"'+(CM.lockSeed?' checked':'')+'>锁 Seed 保角色</label>'
+    +'<input id="cSeed" value="'+esc(CM.seed||'')+'" placeholder="Seed" style="width:96px;'+CINP+'">'
+    +'<button id="cDice" type="button" class="mini" style="flex:0 0 auto">🎲</button>'
+    +'<label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="cBoost"'+(CM.boost?' checked':'')+'>分镜构图强化</label></div>'
+    +'<div id="cPanels"></div>'
+    +'<button id="cGo" type="button" style="width:100%;padding:13px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:15px;margin-top:4px">生成整页漫画</button>';
+  renderComicLayout();renderComicPool();renderComicPanels();renderComicPrev();
+  const cv=$('#cCv');let drag=null;
+  cv.addEventListener('pointerdown',e=>{ // 命中气泡：倒序找最上层
+    const rc=cv.getBoundingClientRect(),px=(e.clientX-rc.left)*cv.width/rc.width,py=(e.clientY-rc.top)*cv.height/rc.height;
+    drag=null;
+    for(let i=CM.panels.length-1;i>=0;i--){const ls=CM.panels[i].lines;
+      for(let j=ls.length-1;j>=0;j--){const b=ls[j]._rect;
+        if(b&&px>=b.x-8&&px<=b.x+b.w+8&&py>=b.y-8&&py<=b.y+b.h+8){drag={l:ls[j],dx:px-b.cx,dy:py-b.cy};cv.setPointerCapture(e.pointerId);return;}}}
+  });
+  cv.addEventListener('pointermove',e=>{
+    if(!drag)return;
+    const rc=cv.getBoundingClientRect(),px=(e.clientX-rc.left)*cv.width/rc.width,py=(e.clientY-rc.top)*cv.height/rc.height;
+    drag.l.x=Math.max(0,Math.min(100,Math.round((px-drag.dx)/cv.width*100)));
+    drag.l.y=Math.max(0,Math.min(100,Math.round((py-drag.dy)/cv.height*100)));
+    renderComicPrev();comicSave();
+  });
+  cv.addEventListener('pointerup',()=>drag=null);
+  $('#cLock').onchange=e=>{CM.lockSeed=e.target.checked;comicSave();};
+  $('#cSeed').oninput=e=>{CM.seed=e.target.value.trim();comicSave();};
+  $('#cDice').onclick=()=>{CM.seed=String((Math.random()*4294967295)|0);$('#cSeed').value=CM.seed;comicSave();toast('Seed 已摇：'+CM.seed);};
+  $('#cBoost').onchange=e=>{CM.boost=e.target.checked;comicSave();};
+  $('#cScript').onclick=()=>comicScript($('#cPlot').value.trim(),$('#cScript'));
+  $('#cGo').onclick=()=>comicRun($('#cGo'));
 }
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
