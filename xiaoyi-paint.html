@@ -4384,12 +4384,18 @@ function openComboLab(){
     const str=comboStr();if(!str)return toast('先加原料');
     genSample(str,$('#clName').value.trim()||'我的串预览');
   };
-  $('#clToArt').onclick=()=>{
+  $('#clToArt').onclick=()=>{ // 加入画师串并启用；原料里已单独启用的串自动停用，防新旧几条各走各的互相拉扯串风
     const str=comboStr();if(!str)return toast('先加原料');
     if(libHas(str)){toast('这条串已经在画师串里了');return;}
+    let off=0;
+    comboIng.forEach(x=>{ // 原料串已在清单里启用 → 关掉旧的，只留调和后的新基因串
+      const ex=S.artists.find(a=>a.on&&String(a.str).trim().toLowerCase()===String(x.s).trim().toLowerCase());
+      if(ex){ex.on=false;off++;}
+    });
     S.artists.unshift({id:uid(),name:comboName(true),str:str.slice(0,300),on:true});
     persist('xy_artists',S.artists,false);renderArtists();
-    toast('已加入画师串并启用');
+    const onN=S.artists.filter(a=>a.on).length;
+    toast('已启用「'+comboName(true)+'」'+(off?'，自动停用 '+off+' 条重复原料串':'')+(onN>3?'。⚠️ 当前启用 '+onN+' 条偏多，容易各走各的串风，建议关到 3 条内':''));
   };
   $('#clSave').onclick=()=>{
     const str=comboStr();if(!str)return toast('先加原料');
