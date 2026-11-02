@@ -1042,7 +1042,7 @@ const S={
   faceW:store.get('xy_facew',65), // 长相参考图影响强度（%）
   faceCards:store.get('xy_facecards',null)||[], // 角色卡库：[{id,name,face,img,costume}]
   faceActive:store.get('xy_faceactive',''), // 当前启用的角色卡 id（仅做标记）
-  styleLock:store.get('xy_stylelock',null)||{on:false,en:'',face:''}, // 画风锁：从满意出图提取画风指纹，每次出图焊在提示词最前防串风
+  styleLock:store.get('xy_stylelock',null)||{on:false,en:'',face:'',img:''}, // 画风锁：文字指纹+绑定参考图（NAI 直连走 Vibe Transfer 原图通道）
   wilds:store.get('xy_wilds',null)||{发型:['长发','短发','双马尾','丸子头','波浪卷','高马尾']}, // 通配符词表：名字→候选数组
   labMsgs:store.get('xy_labmsgs',[]), // 画风实验的配方记录（不含图片）
   sessions:store.get('xy_sessions',[]), // 归档的对话会话
@@ -4507,14 +4507,15 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
   openSheet('画风锁 · 防串风',[]);
   const box=$('#sheetItems');box.innerHTML='';
   const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 14px';box.appendChild(wrap);
-  const L=S.styleLock=S.styleLock||{on:false,en:'',face:''};
-  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">从满意出图里提取「画风指纹」焊进提示词：之后换形象词、换场景、换动作，画风也不漂。长相串可选，用来锁人物长相类型。启用后所有出图（助手对话、OC 拍照、表情包、漫画工坊、衣橱换装）自动拼在最前。</div>'
+  const L=S.styleLock=S.styleLock||{on:false,en:'',face:'',img:''};L.img=L.img||'';
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">从满意出图里提取「画风指纹」焊进提示词：之后换形象词、换场景、换动作，画风也不漂。长相串可选，用来锁人物长相类型。启用后所有出图（助手对话、OC 拍照、表情包、漫画工坊、衣橱换装）自动拼在最前。<b>双通道锁定</b>：NAI 直连出图时绑定的参考图原图走 Vibe Transfer（官方原生锁画风，比文字更准）；中转站没有此能力，自动退回文字指纹。</div>'
    +'<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--rule);border-radius:12px;padding:9px 12px;margin-bottom:10px"><span style="font-size:12.5px;font-weight:600">启用画风锁</span><input type="checkbox" id="slOn" '+(L.on?'checked':'')+' style="width:20px;height:20px;accent-color:#111"></div>'
    +'<div class="field"><label>画风串（英文 tag · 画风指纹）</label><textarea id="slEn" rows="3" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.en||'')+'</textarea></div>'
    +'<div class="field"><label>长相串（可选 · 人物长相类型锚）</label><textarea id="slFace" rows="2" style="width:100%;'+CINP+';resize:none;line-height:1.55">'+esc(L.face||'')+'</textarea></div>'
    +'<div class="field"><label>提取来源（点选一张画风满意的，或从本地上传）</label><div id="slStrip" style="display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px"></div>'
    +'<button class="mini" id="slUp" type="button" style="width:100%;margin-top:6px">📷 从本地上传参考图</button><input type="file" id="slFile" accept="image/*" style="display:none">'
-   +'<div style="display:flex;gap:6px;margin-top:8px"><button class="mini pri" id="slGetStyle" type="button" style="flex:1">🎨 提取画风</button><button class="mini" id="slGetFace" type="button" style="flex:1">👤 提取长相</button></div></div>'
+   +'<div style="display:flex;gap:6px;margin-top:8px"><button class="mini pri" id="slGetStyle" type="button" style="flex:1">🎨 提取画风</button><button class="mini" id="slGetFace" type="button" style="flex:1">👤 提取长相</button></div>'
+   +'<div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--rule);border-radius:12px;padding:8px 12px;margin-top:8px"><span id="slVibeTip" style="font-size:11.5px;color:var(--muted);flex:1;line-height:1.5"></span><button class="mini" id="slVibeOff" type="button" style="flex:0 0 auto">解绑</button></div></div>'
    +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>';
   const strip=wrap.querySelector('#slStrip');
   const imgs=[];
@@ -4566,11 +4567,16 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     b2.textContent=old;b2.disabled=false;
   };
   wrap.querySelector('#slOn').onchange=e=>{L.on=e.target.checked;store.set('xy_stylelock',L);toast(L.on?'🔒 画风锁已启用，每次出图自动焊接':'画风锁已关闭');};
-  wrap.querySelector('#slSave').onclick=()=>{
+  const vibeTip=()=>{wrap.querySelector('#slVibeTip').textContent=L.img?'已绑定参考图 · NAI 直连出图时原图走 Vibe Transfer（中转站自动用文字指纹）':'未绑定 · 保存时若已点选参考图会自动绑定';};
+  wrap.querySelector('#slVibeOff').onclick=()=>{L.img='';store.set('xy_stylelock',L);vibeTip();toast('参考图已解绑，仅用文字指纹');};
+  vibeTip();
+  wrap.querySelector('#slSave').onclick=async()=>{
     L.en=wrap.querySelector('#slEn').value.trim().slice(0,600);
     L.face=wrap.querySelector('#slFace').value.trim().slice(0,300);
+    if(sel){try{const k='sl:'+Date.now();await idbSet(k,sel);L.img='@idb:'+k;}catch(e){}} // 绑定参考图：NAI 直连出图走 Vibe Transfer 原图通道
     store.set('xy_stylelock',L);
-    toast('画风锁已保存'+(L.on?'，出图自动生效':'（当前未启用）'));
+    vibeTip();
+    toast('画风锁已保存'+(L.on?'，出图自动生效':'（当前未启用）')+(L.img?'，参考图已绑定':''));
   };
 }
 $('#btnComboLab').onclick=openComboLab;
@@ -5124,6 +5130,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     updateProgress(prog,next,next<25?'提交请求':next<65?(n>1?'生成 '+n+' 张 · 进行中':'模型生成中'):'接收图片');
   },420);
   try{
+    if(p.type==='nai'){const sv=await styleLockVibe();if(sv)refs=[sv,...(refs||[])].slice(0,4);} // NAI 直连：画风锁参考图原图走 Vibe Transfer，锁得比文字 tag 更死
     const results=await Promise.allSettled(Array.from({length:n},()=>apiGenerate(p,{prompt:promptEn,refDataUrls:refs,size:useSize,neg:useNeg,seed:useSeed,steps:S.steps,sampler:S.sampler})));
     const imgs=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
     if(!imgs.length){const e=results.find(r=>r.status==='rejected');throw (e&&e.reason)||new Error('生成失败');}
@@ -5297,6 +5304,12 @@ async function apiFaceFromImg(p,img){ // 图生长相类型串：看图反推人
 function styleLockEn(){ // 画风锁英文段：启用时拼在所有直接出图 prompt 最前
   const L=S.styleLock;if(!L||!L.on)return '';
   return [L.en,L.face].filter(Boolean).join(', ');
+}
+async function styleLockVibe(){ // 画风锁绑定参考图：NAI 直连时作为第一张 vibe 走 Vibe Transfer 原图通道（中转站无此能力，出图前判断类型自动跳过）
+  const L=S.styleLock;if(!L||!L.on||!L.img)return '';
+  let u=L.img;
+  if(String(u).startsWith('@idb:')){const d=await idbGet(u.slice(5));if(!d)return '';u=d;}
+  return u;
 }
 async function apiArtistFromImg(p,img){ // 图生画师串：看图反推画风元素 → 合成 artist:串 + 风格词
   const root=apiRoot(p.baseUrl);
@@ -6226,7 +6239,8 @@ $('#ocShootGo').onclick=async()=>{
   const prompt=[styleLockEn(),cnt,tags,words,artsOn,QT].filter(Boolean).join(', ');
   const btn=$('#ocShootGo');btn.textContent='画图中…';
   try{
-    const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?NEG_NAI:SAMP_NEG});
+    const vref=(p.type==='nai')?await styleLockVibe():''; // 中转站接口没有 Vibe Transfer，参考图不传免得被忽略或报错
+    const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'1024x1024',neg:isNai?NEG_NAI:SAMP_NEG,refDataUrls:vref?[vref]:[]});
     const out=$('#ocShootOut');out.innerHTML='';
     if(!src){out.innerHTML='<div style="font-size:12px;color:var(--danger)">接口没返回图片</div>';}
     else{
@@ -6910,6 +6924,7 @@ async function comicRun(btn){ // 逐格生成（通连画师串/参数/滤镜水
   if(CM.lockSeed&&!CM.seed){CM.seed=String((Math.random()*4294967295)|0);comicSave();const si=$('#cSeed');if(si)si.value=CM.seed;}
   btn.disabled=true;const old=btn.textContent;const zhAll=[];
   try{
+    const vref=(p.type==='nai')?await styleLockVibe():''; // 画风锁参考图：NAI 直连逐格传 Vibe Transfer，整本画风统一
     const imgs=[];
     for(let i=0;i<CM.panels.length;i++){
       const pl=CM.panels[i];
@@ -6931,7 +6946,7 @@ async function comicRun(btn){ // 逐格生成（通连画师串/参数/滤镜水
       try{if(CJK_RE.test(zh))pe=await translatePrompt(p,zh);}catch(e){}
       const seed=CM.lockSeed?String(parseInt(CM.seed,10)||0):'';
       let src=null;
-      try{src=await apiGenerate(p,{prompt:pe,size,neg,seed});}catch(err){toast('第 '+(i+1)+' 格失败：'+String(err.message||err).slice(0,60));}
+      try{src=await apiGenerate(p,{prompt:pe,size,neg,seed,refDataUrls:vref?[vref]:[]});}catch(err){toast('第 '+(i+1)+' 格失败：'+String(err.message||err).slice(0,60));}
       imgs.push(src?await postProcess(src):null); // 失败格占位继续，别一锅端
     }
     if(!imgs.some(Boolean))throw new Error('一格都没画出来，检查接口与额度');
@@ -7135,7 +7150,8 @@ async function ocOutfitShoot(card,ot,btn){ // 一键换装出图：性别 tag + 
     let body=(card.gender==='f'?'1girl':'1boy')+', solo, full body, standing, '+(ot.s||'')+', '+(card.tags||'');
     if(CJK_RE.test(body))body=await translatePrompt(p,body);
     const prompt=[styleLockEn(),arts,body,QT].filter(Boolean).join(', ');
-    const src=await apiGenerate(p,{prompt,size:size,neg:neg});
+    const vref=(p.type==='nai')?await styleLockVibe():''; // 衣橱换装同样吃画风锁参考图
+    const src=await apiGenerate(p,{prompt,size:size,neg:neg,refDataUrls:vref?[vref]:[]});
     if(!src){toast('接口没返回图片');return;}
     const out=await postProcess(src);
     pushMsg({id:uid(),role:'ai',kind:'image',img:out,prompt:prompt,text:'👗 '+card.name+' 穿上了「'+ot.n+'」',snap:{prompt:prompt,neg:neg,size:size,seed:'',count:1},ts:Date.now()});
