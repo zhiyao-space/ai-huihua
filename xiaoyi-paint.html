@@ -4427,24 +4427,33 @@ async function clDraw(){ // 当场画一张预览：拼串+场景描述直出
   }
   comboBusy=false;
 }
-function renderComboRes(q){ // 候选：我的串 + 组合串（整条做原料）+ 画师类词条
+function comboPool(){ // 配方候选池：我的串 + 全词库（18 个分类全部可搜，不再只限画师/组合两类）
+  const kOf=c=>c==='combo'?'merge':((c==='artist'||c==='male'||c==='unisex')?'artist':'text');
+  return [
+    ...(S.myCombos||[]).map(c=>({n:c.n,s:c.s,d:'我的串',k:'merge'})),
+    ...ARTIST_LIB.filter(it=>it&&it.s).map(x=>({n:x.n,s:x.s,d:x.d||'',k:kOf(x.c),c:x.c})),
+  ];
+}
+function comboCatLabel(x){ // 词条分类角标：串/画师分类取通用名，其余取词库分类名
+  if(x.k==='merge')return '串';
+  const cat=(LIB_CATS.find(t=>t[0]===x.c)||[])[1];
+  return cat||'词';
+}
+function renderComboRes(q){ // 候选：我的串 + 全词库（任一分类都搜得到），同名优先、限量 20
   const box=$('#clRes');if(!box)return;
   q=(q||'').trim().toLowerCase();
   const match=it=>!q||(it.n+' '+it.s+' '+(it.d||'')).toLowerCase().includes(q);
-  const pool=[
-    ...(S.myCombos||[]).map(c=>({n:c.n,s:c.s,d:'我的串',k:'merge'})),
-    ...ARTIST_LIB.filter(x=>x.c==='combo').map(x=>({n:x.n,s:x.s,d:x.d,k:'merge'})),
-    ...ARTIST_LIB.filter(x=>x.c==='artist'||x.c==='male'||x.c==='unisex').map(x=>({n:x.n,s:x.s,d:x.d,k:'artist'})),
-  ].filter(match);
   const seen=new Set(); // 同串内容只显示一次
-  const uniq=pool.filter(x=>{const k=x.s.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;}).slice(0,8);
+  let uniq=comboPool().filter(match).filter(x=>{const k=x.s.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});
+  if(q)uniq.sort((a,b)=>((b.n.toLowerCase().startsWith(q)?1:0)-(a.n.toLowerCase().startsWith(q)?1:0))||(a.n.length-b.n.length));
+  uniq=uniq.slice(0,20);
   if(!uniq.length){box.innerHTML='<div style="font-size:11.5px;color:var(--faint)">没搜到就走下面的手输 / 描述词通道</div>';return;}
   box.innerHTML='';
   uniq.forEach(x=>{
     const b=document.createElement('button');b.type='button';
     b.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:10px;padding:5px 8px;font-size:12px';
     const im=libThumbOf(x.s);
-    const badge=x.k==='merge'?'<span style="flex:0 0 auto;font-size:9px;color:var(--muted);border:1px solid var(--rule2);border-radius:5px;padding:0 4px">串</span>':'';
+    const badge='<span style="flex:0 0 auto;font-size:9px;color:var(--muted);border:1px solid var(--rule2);border-radius:5px;padding:0 4px">'+esc(comboCatLabel(x))+'</span>';
     b.innerHTML=(im?'<img src="'+im+'" style="width:26px;height:26px;border-radius:8px;object-fit:cover;flex:0 0 auto">':'')
       +badge
       +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'<em style="font-style:normal;color:var(--muted)"> · '+esc(x.s.slice(0,42))+(x.s.length>42?'…':'')+'</em></span>'
@@ -4485,13 +4494,56 @@ function renderComboLab(){
 }
 function renderComboPrev(){const pv=$('#clPrev');if(pv)pv.value=comboStr();}
 $('#btnComboLab').onclick=openComboLab;
-$('#btnAddArtist').onclick=()=>{ // 添加画师串：手写 artist:串 / 风格 tag，逗号分隔，存完默认启用
-  const t=prompt('画师串内容：如 artist:wlop, artist:guweiz，也可混风格 tag，逗号分隔','');
-  if(!t||!t.trim())return;
-  const n=prompt('备注名称（方便记，如：奶白厚涂）：','')||'';
-  S.artists.push({id:uid(),name:n.trim().slice(0,20),str:t.trim().slice(0,300),on:true});
-  persist('xy_artists',S.artists,false);renderArtists();
-  toast('已添加并启用「'+(n.trim()||'新串')+'」');
+$('#btnAddArtist').onclick=()=>{ // 添加画师串：搜词库直接加 / 已有去重 / 手动输入，三通道不再只有手打
+  openSheet('添加画师串',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 14px';box.appendChild(wrap);
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">从词库挑一条直接加（画师 / 组合 / 画风 / 镜头 / 氛围…18 类全搜），也可以走最下面的手动输入。</div>'
+   +'<input id="baQ" placeholder="搜中文名或英文，比如：厚涂、wlop、韩系" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:8px 12px;font-size:12.5px;outline:none;color:var(--ink)">'
+   +'<div id="baRes" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:230px;overflow-y:auto"></div>'
+   +'<div style="display:flex;gap:6px;margin-top:12px"><input id="baS" placeholder="手动输入：artist:wlop, artist:guweiz" style="flex:1;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:8px 12px;font-size:12.5px;outline:none;color:var(--ink)"><input id="baN" placeholder="备注名" style="flex:0 0 80px;min-width:0;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:8px 12px;font-size:12.5px;outline:none;color:var(--ink)"><button id="baAdd" type="button" class="mini pri" style="flex:0 0 auto">添加</button></div>';
+  const render=q=>{
+    q=(q||'').trim().toLowerCase();
+    const match=it=>!q||(it.n+' '+it.s+' '+(it.d||'')).toLowerCase().includes(q);
+    const seen=new Set();
+    let list=comboPool().filter(match).filter(x=>{const k=x.s.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});
+    if(q)list.sort((a,b)=>((b.n.toLowerCase().startsWith(q)?1:0)-(a.n.toLowerCase().startsWith(q)?1:0))||(a.n.length-b.n.length));
+    list=list.slice(0,24);
+    const el=wrap.querySelector('#baRes');
+    if(!list.length){el.innerHTML='<div style="font-size:11.5px;color:var(--faint);padding:8px 2px">没搜到，换个词，或走下面手动输入</div>';return;}
+    el.innerHTML='';
+    list.forEach(x=>{
+      const has=libHas(x.s);
+      const b=document.createElement('button');b.type='button';
+      b.style.cssText='display:flex;gap:8px;align-items:center;text-align:left;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:10px;padding:6px 8px;font-size:12px'+(has?';opacity:.55':'');
+      const im=libThumbOf(x.s);
+      b.innerHTML=(im?'<img src="'+im+'" style="width:28px;height:28px;border-radius:8px;object-fit:cover;flex:0 0 auto">':'')
+       +'<span style="flex:0 0 auto;font-size:9px;color:var(--muted);border:1px solid var(--rule2);border-radius:5px;padding:0 4px">'+esc(comboCatLabel(x))+'</span>'
+       +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'<em style="font-style:normal;color:var(--muted)"> · '+esc(x.s.slice(0,40))+(x.s.length>40?'…':'')+'</em></span>'
+       +'<span style="flex:0 0 auto;font-size:11px;font-weight:600;color:'+(has?'var(--faint)':'var(--accent)')+'">'+(has?'已有':'加入')+'</span>';
+      b.onclick=()=>{
+        if(libHas(x.s)){toast('「'+x.n+'」已经在画师串里了');return;}
+        S.artists.unshift({id:uid(),name:x.n,str:x.s.slice(0,300),on:true});
+        persist('xy_artists',S.artists,false);renderArtists();
+        toast('「'+x.n+'」已加入画师串并启用');
+        render(wrap.querySelector('#baQ').value);
+      };
+      el.appendChild(b);
+    });
+  };
+  wrap.querySelector('#baQ').oninput=e=>render(e.target.value);
+  wrap.querySelector('#baAdd').onclick=()=>{
+    const t=wrap.querySelector('#baS').value.trim();
+    if(!t)return toast('先输入画师串内容');
+    const n=wrap.querySelector('#baN').value.trim().slice(0,20);
+    if(libHas(t))return toast('这条串已经存在了');
+    S.artists.unshift({id:uid(),name:n||'新串',str:t.slice(0,300),on:true});
+    persist('xy_artists',S.artists,false);renderArtists();
+    wrap.querySelector('#baS').value='';wrap.querySelector('#baN').value='';
+    render(wrap.querySelector('#baQ').value);
+    toast('已添加并启用「'+(n||'新串')+'」');
+  };
+  render('');
 };
 $('#btnArtistsFold').onclick=()=>{ // 我的串清单折叠：默认收起只占一行，展开才铺卡片流，不再把下面的模块顶出屏幕
   const box=$('#artistList');
