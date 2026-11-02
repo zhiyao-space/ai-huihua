@@ -728,6 +728,15 @@ select.sel{width:100%;background:var(--elev);border:1px solid var(--rule);border
               </button>
             </div>
           </div>
+          <div class="field" id="fVideoField">
+            <label>视频模型 <span style="color:var(--faint)">（可选 · 动图工坊 AI 视频专用，填中转站的视频模型名）</span></label>
+            <div class="in-wrap">
+              <input id="fVideo" placeholder="留空=AI 视频用不了；如 kling-v1 / wan2.1 / minimax-video…" autocapitalize="off">
+              <button class="mini" id="btnVideoPick" type="button" style="flex:0 0 auto;padding:6px 10px" title="选择视频模型">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></svg>
+              </button>
+            </div>
+          </div>
           <div class="acts">
             <button class="mini pri" id="btnSave">保存配置</button>
             <button class="mini" id="btnTest">
@@ -4517,6 +4526,9 @@ $('#btnPlus').onclick=()=>{
     {icon:'dice',txt:'随机灵感（摇一下直接画）',fn:rollDice},
     {icon:'brush',txt:'OC 里世界（角色互动剧场）',fn:openOcWorld},
     {icon:'brush',txt:'画风实验（聊天页切换形态配画风）',fn:()=>{switchTab('chat');setLabMode(true);}},
+    {icon:'quote',txt:'滤镜工坊（调参配方 · AI 调和）',fn:openFilterLab},
+    {icon:'quote',txt:'水印工坊（文字/素材抠图/AI 画水印）',fn:openWmLab},
+    {icon:'redo',txt:'动图工坊（图组动效/AI 视频）',fn:openMotionLab},
   ]);
 };
 
@@ -4953,7 +4965,8 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
     const wait=Math.max(0,600-(Date.now()-t0));
     await new Promise(r=>setTimeout(r,wait));
     updateProgress(prog,100,'完成');
-    for(let i=0;i<imgs.length;i++){ // PNG 元数据嵌入：提示词/参数随图走，任何工具可读回
+    for(let i=0;i<imgs.length;i++){ // PNG 元数据嵌入：提示词/参数随图走，任何工具可读回（滤镜/水印先做像素处理再嵌，避免重编码丢元数据）
+      imgs[i]=await postProcess(imgs[i]);
       imgs[i]=embedMeta(imgs[i],{prompt:prompt,en:promptEn!==prompt?promptEn:undefined,neg:useNeg,size:useSize,steps:S.steps,sampler:S.sampler,seed:useSeed,provider:p.type==='nai'?'nai':'openai',model:p.model,scale:p.type==='nai'?((p.nai||{}).scale):''});
     }
     const idx=S.msgs.indexOf(prog);
@@ -5284,6 +5297,7 @@ function fillForm(p){
   $('#fModel').value=p?.model||'';
   $('#fChat').value=p?.chatModel||'';
   $('#fOc').value=p?.ocModel||'';
+  $('#fVideo').value=p?.videoModel||'';
   const nc=(p&&p.nai)||naiDefCfg();
   $('#fNaiSampler').value=nc.sampler||'k_euler';
   $('#fNaiScale').value=nc.scale??6;
@@ -5310,6 +5324,7 @@ function collectForm(){
     model:$('#fModel').value.trim(),
     chatModel:$('#fChat').value.trim(),
     ocModel:$('#fOc').value.trim(),
+    videoModel:$('#fVideo').value.trim(),
     models:nai?NAI_MODELS.map(m=>m.id):editModels.slice()
   };
   if(nai)out.nai={sampler:$('#fNaiSampler').value,scale:+$('#fNaiScale').value||6,steps:+$('#fNaiSteps').value||28,ucPreset:$('#fNaiUc').value,rescale:+$('#fNaiRescale').value||0,variety:$('#fNaiVariety').value==='on'};
@@ -5430,6 +5445,7 @@ $('#btnModels').onclick=async()=>{
 $('#btnModelPick').onclick=()=>{if(editType==='nai')return openNaiModelPicker();openModelPicker('#fModel','绘画模型');};
 $('#btnChatPick').onclick=()=>openModelPicker('#fChat','理解模型','chat');
 $('#btnOcPick').onclick=()=>openModelPicker('#fOc','OC 模型','chat');
+$('#btnVideoPick').onclick=()=>openModelPicker('#fVideo','视频模型','all');
 $('#btnTest').onclick=async()=>{
   const p=collectForm();if(!p)return;
   const out=$('#testOut');
@@ -6032,6 +6048,478 @@ $('#ocShootGo').onclick=async()=>{
   }catch(e){toast('合照失败：'+String(e&&e.message||e).slice(0,60));}
   btn.textContent='📷 生成合照';
 };
+
+/* ===== 滤镜工坊 / 水印工坊 / 动图工坊（纯前端 canvas 管线，零新增依赖） ===== */
+const FLT_DEFS=[['bright','亮度',.5,1.6,.01],['contrast','对比',.5,1.6,.01],['sat','饱和',0,2,.01],['hue','色相',-180,180,1],['sepia','泛黄',0,1,.01],['blur','模糊',0,8,.1],['grain','颗粒',0,100,1],['vig','暗角',0,100,1],['warm','色温',-60,60,1],['fade','褪色',0,100,1]];
+const defFlt=()=>({bright:1,contrast:1,sat:1,hue:0,sepia:0,blur:0,grain:0,vig:0,warm:0,fade:0});
+const clampFlt=o=>{const d=defFlt();FLT_DEFS.forEach(([k,,lo,hi])=>{const v=+o[k];if(isFinite(v))d[k]=Math.min(hi,Math.max(lo,v));});return d;};
+const lastLibImg=()=>{for(let i=S.msgs.length-1;i>=0;i--){const m=S.msgs[i];if(m.kind==='image'){const a=((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean);if(a.length)return a[a.length-1];}}return null;};
+const loadAny=src=>{const p=String(src||'').startsWith('@idb:')?idbGet(String(src).slice(5)):Promise.resolve(src);return p.then(raw=>{if(!raw)throw new Error('图没了');return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('解码失败'));im.src=raw;});});};
+function fltCanvas(img,f,maxSide){ // 滤镜画布：css filter 一遍 + 像素级（色温/褪色/颗粒/暗角）一遍
+  const sc=Math.min(1,maxSide/Math.max(img.width,img.height));
+  const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d');x.filter=`brightness(${f.bright}) contrast(${f.contrast}) saturate(${f.sat}) hue-rotate(${f.hue}deg) sepia(${f.sepia}) blur(${f.blur}px)`;
+  x.drawImage(img,0,0,w,h);x.filter='none';
+  if(f.warm||f.fade||f.grain||f.vig){
+    const d=x.getImageData(0,0,w,h),a=d.data;
+    const wr=f.warm/100,fd=f.fade/100,gr=f.grain*.9,vg=f.vig/100;
+    for(let y=0;y<h;y++)for(let xx=0;xx<w;xx++){
+      const i=(y*w+xx)*4;let r=a[i],g=a[i+1],b=a[i+2];
+      if(wr){r+=wr*44*(r/255);b-=wr*40*(1-b/255);}
+      if(fd){r+=(238-r)*fd*.16;g+=(234-g)*fd*.16;b+=(224-b)*fd*.16;}
+      if(gr){const n=(Math.random()-.5)*gr;r+=n;g+=n;b+=n;}
+      if(vg){const dx=xx/w-.5,dy=y/h-.5,k=1-vg*Math.pow(Math.max(0,Math.sqrt(dx*dx+dy*dy)/.7071-.45)/.55,1.6);r*=k;g*=k;b*=k;}
+      a[i]=r<0?0:r>255?255:r;a[i+1]=g<0?0:g>255?255:g;a[i+2]=b<0?0:b>255?255:b;
+    }
+    x.putImageData(d,0,0);
+  }
+  return c;
+}
+async function applyFilter(src,f,maxSide){const im=await loadAny(src);return fltCanvas(im,f,maxSide||1536).toDataURL('image/jpeg',.92);}
+async function postProcess(src){ // 出图后处理管线：自动滤镜 → 自动水印（嵌 PNG 元数据前调用）
+  let s=src;
+  try{if(store.get('xy_filter_auto'))s=await applyFilter(s,clampFlt(store.get('xy_filter_cur')||defFlt()));}catch(e){}
+  try{if(store.get('xy_wm_auto'))s=await applyWm(s);}catch(e){}
+  return s;
+}
+const FLT_SYS='你是调色师。把用户的滤镜需求转成参数 JSON，只输出 JSON 不要解释。字段与范围：bright亮度0.5-1.6, contrast对比0.5-1.6, sat饱和0-2, hue色相-180到180, sepia泛黄0-1, blur模糊0-8, grain颗粒0-100, vig暗角0-100, warm色温-60到60(负=冷调,正=暖), fade褪色0-100。参考：「日系奶白」:{"bright":1.12,"contrast":0.92,"sat":0.85,"grain":12,"vig":18,"warm":14,"fade":22}；「港风胶片」:{"bright":1.02,"contrast":1.12,"sat":0.9,"grain":38,"vig":34,"warm":22,"fade":30}；「赛博冷调」:{"bright":0.98,"contrast":1.18,"sat":1.25,"hue":-14,"vig":30,"warm":-30}。未提到的字段给默认值(bright/contrast/sat=1,其余=0)。';
+async function openFilterLab(){ // 滤镜工坊：调参实时预览 · AI 调和 · 配方一键套用
+  openSheet('滤镜工坊（调参 · AI 调和 · 配方）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 14px';box.appendChild(wrap);
+  const f=clampFlt(store.get('xy_filter_cur')||defFlt());
+  const base=lastLibImg();
+  wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">调好存成配方，以后一键整套套用；也能一句话让 AI 调出想要的味道。</div>
+  <div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-bottom:10px;background:#111;min-height:60px"><canvas id="fltPrev" style="width:100%;display:block"></canvas></div>
+  ${base?'':'<div style="font-size:12px;color:var(--faint);margin:6px 0">还没有底图：先出一张图再来，预览用最近那张。</div>'}
+  <div id="fltSliders" style="display:flex;flex-direction:column;gap:2px"></div>
+  <div style="display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap">
+    <button id="fltReset" type="button" class="mini" style="flex:0 0 auto">归零</button>
+    <input id="fltNeed" placeholder="想要什么味？日系奶白 / 港风胶片 / 赛博冷调" style="flex:1;min-width:0;border:1px solid var(--rule);background:var(--elev);border-radius:12px;padding:8px 12px;font-size:12px;color:var(--ink)">
+    <button id="fltAi" type="button" class="mini pri" style="flex:0 0 auto">AI 调和</button>
+  </div>
+  <div style="display:flex;gap:6px;margin:6px 0;flex-wrap:wrap">
+    <input id="fltName" placeholder="配方名，如：奶白一寸" style="flex:1;min-width:0;border:1px solid var(--rule);background:var(--elev);border-radius:12px;padding:8px 12px;font-size:12px;color:var(--ink)">
+    <button id="fltSave" type="button" class="mini" style="flex:0 0 auto">存为配方</button>
+  </div>
+  <div id="fltRecipes" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px"></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)"><input type="checkbox" id="fltAuto" ${store.get('xy_filter_auto')?'checked':''}> 出图自动套用当前滤镜</label>
+  <div style="display:flex;gap:6px;margin-top:8px"><button id="fltApplyLib" type="button" class="mini" style="flex:1">把滤镜套到最近一张图</button></div>`;
+  const pv=$('#fltPrev'),slBox=$('#fltSliders');let pvJob=0;
+  async function drawPrev(){
+    const my=++pvJob;
+    if(!base){pv.style.display='none';return;}
+    try{const im=await loadAny(base);const c=fltCanvas(im,f,420);
+      if(my!==pvJob)return;
+      pv.width=c.width;pv.height=c.height;pv.getContext('2d').drawImage(c,0,0);pv.style.display='block';
+    }catch(e){pv.style.display='none';}
+  }
+  function buildSliders(){
+    slBox.innerHTML='';
+    FLT_DEFS.forEach(([k,label,lo,hi,st])=>{
+      const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:2px 0';
+      row.innerHTML=`<span style="flex:0 0 52px;font-size:12px;color:var(--muted)">${label}</span><input data-k="${k}" type="range" min="${lo}" max="${hi}" step="${st}" value="${f[k]}" style="flex:1"><b style="flex:0 0 46px;text-align:right;font-size:11px;color:var(--ink)">${f[k]}</b>`;
+      slBox.appendChild(row);
+      const r=row.querySelector('input'),vb=row.querySelector('b');
+      r.oninput=()=>{f[k]=+r.value;vb.textContent=r.value;drawPrev();};
+    });
+  }
+  function renderRecipes(){
+    const el=$('#fltRecipes');const list=store.get('xy_filter_recipes')||[];
+    el.innerHTML=list.length?'':'<span style="font-size:11px;color:var(--faint)">还没有配方，调好存一个</span>';
+    list.slice().reverse().forEach(rc=>{
+      const chip=document.createElement('span');chip.style.cssText='display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);border-radius:999px;padding:5px 10px;font-size:12px;color:var(--ink);cursor:pointer';
+      chip.innerHTML=esc(rc.n)+' <b data-del="1" style="color:var(--faint);font-weight:400">×</b>';
+      chip.onclick=e=>{
+        if(e.target.dataset.del){store.set('xy_filter_recipes',list.filter(x=>x.id!==rc.id));renderRecipes();return;}
+        Object.keys(f).forEach(k=>f[k]=rc.p[k]);
+        buildSliders();drawPrev();toast('已套用「'+rc.n+'」');
+      };
+      el.appendChild(chip);
+    });
+  }
+  buildSliders();renderRecipes();drawPrev();
+  $('#fltReset').onclick=()=>{Object.assign(f,defFlt());buildSliders();drawPrev();};
+  $('#fltAuto').onchange=e=>{store.set('xy_filter_auto',e.target.checked);toast(e.target.checked?'以后每张图自动带滤镜':'已关闭自动滤镜');};
+  $('#fltSave').onclick=()=>{
+    const n=$('#fltName').value.trim()||('配方'+((store.get('xy_filter_recipes')||[]).length+1));
+    const list=store.get('xy_filter_recipes')||[];
+    list.push({id:uid(),n:n.slice(0,10),p:JSON.parse(JSON.stringify(f))});
+    store.set('xy_filter_recipes',list);store.set('xy_filter_cur',f);renderRecipes();toast('配方「'+n.slice(0,10)+'」已存');
+  };
+  $('#fltAi').onclick=async()=>{
+    const need=$('#fltNeed').value.trim();if(!need)return toast('先写想要的味道');
+    const p=activePreset();if(!p||!p.chatModel)return toast('先去「配置」页选好理解模型');
+    toast('AI 调和中…');
+    try{
+      const r=await fetch(apiRoot(p.baseUrl)+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.chatModel,messages:[{role:'user',content:FLT_SYS+'\n用户需求：'+need}],temperature:.3,max_tokens:300})});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();const txt=(((j.choices||[])[0]||{}).message||{}).content||'';
+      const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('没解析到参数');
+      const nf=clampFlt(JSON.parse(m[0]));Object.keys(f).forEach(k=>f[k]=nf[k]);
+      buildSliders();drawPrev();store.set('xy_filter_cur',f);toast('调好了，看看味对不对');
+    }catch(e){toast('AI 调和失败：'+String(e.message||e).slice(0,60));}
+  };
+  $('#fltApplyLib').onclick=async()=>{
+    let tm=null,src=null;
+    for(let i=S.msgs.length-1;i>=0;i--){const m=S.msgs[i];if(m.kind==='image'){const a=m.imgs&&m.imgs.length?m.imgs:[m.img];if(a.length){tm=m;src=a[a.length-1];break;}}}
+    if(!tm)return toast('没有已出图的消息');
+    toast('滤镜处理中…');
+    try{
+      const out=await applyFilter(src,f);
+      if(tm.imgs&&tm.imgs.length)tm.imgs[tm.imgs.length-1]=out;else tm.img=out;
+      store.set('xy_msgs',S.msgs);renderMsgs();toast('已套上滤镜');
+    }catch(e){toast('处理失败：'+String(e.message||e).slice(0,60));}
+  };
+}
+/* ---- 水印工坊 ---- */
+const defWm=()=>({type:'text',text:'@MY ART',font:'system-ui',sizePct:3,alpha:.85,rot:-15,pos:8,ox:0,oy:0,color:'#ffffff',stroke:0,strokeC:'#000000',tile:false,img:'',imgPct:22});
+function wmXY(w,h,W,H,cfg){ // 九宫定位：0左上…4居中…8右下，ox/oy 百分比微调
+  const m=Math.round(Math.min(w,h)*.045);
+  const px=[m,(w-W)/2,w-W-m][cfg.pos%3]+w*(cfg.ox||0)/100;
+  const py=[m,(h-H)/2,h-H-m][(cfg.pos/3|0)]+h*(cfg.oy||0)/100;
+  return [Math.max(0,px),Math.max(0,py)];
+}
+async function applyWm(src){
+  const cfg=Object.assign(defWm(),store.get('xy_wm')||{});
+  const im=await loadAny(src);
+  const sc=Math.min(1,1536/Math.max(im.width,im.height));
+  const w=Math.round(im.width*sc),h=Math.round(im.height*sc);
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+  x.globalAlpha=Math.min(1,Math.max(.05,cfg.alpha));
+  if(cfg.type==='img'&&cfg.img){
+    const wi=await loadAny(cfg.img);
+    const W=Math.max(8,w*cfg.imgPct/100),H=wi.height*W/wi.width;
+    if(cfg.tile){for(let yy=8;yy<h;yy+=H+22)for(let xx=8;xx<w;xx+=W+22)x.drawImage(wi,xx,yy,W,H);}
+    else{const [px,py]=wmXY(w,h,W,H,cfg);x.drawImage(wi,px,py,W,H);}
+  }else{
+    const fs=Math.max(11,w*(cfg.sizePct||3)/100);
+    x.font=`600 ${fs}px ${cfg.font||'system-ui'}`;x.textBaseline='middle';
+    if(cfg.tile){
+      const tw=Math.ceil(x.measureText(cfg.text).width);
+      const cell=document.createElement('canvas');cell.width=tw+fs*2;cell.height=fs*2.6;
+      const cc=cell.getContext('2d');cc.translate(cell.width/2,cell.height/2);cc.rotate((cfg.rot||0)*Math.PI/180);
+      cc.font=x.font;cc.textBaseline='middle';cc.fillStyle=cfg.color;
+      if(cfg.stroke>0){cc.strokeStyle=cfg.strokeC;cc.lineWidth=cfg.stroke;cc.lineJoin='round';cc.strokeText(cfg.text,-tw/2,0);}
+      cc.fillText(cfg.text,-tw/2,0);
+      x.fillStyle=x.createPattern(cell,'repeat');x.fillRect(0,0,w,h);
+    }else{
+      const tw=x.measureText(cfg.text).width,th=fs*1.15;
+      const [px,py]=wmXY(w,h,tw,th,cfg);
+      x.save();x.translate(px+tw/2,py+th/2);x.rotate((cfg.rot||0)*Math.PI/180);
+      if(cfg.stroke>0){x.strokeStyle=cfg.strokeC;x.lineWidth=cfg.stroke;x.lineJoin='round';x.strokeText(cfg.text,-tw/2,0);}
+      x.fillStyle=cfg.color;x.fillText(cfg.text,-tw/2,0);x.restore();
+    }
+  }
+  return c.toDataURL('image/jpeg',.93);
+}
+async function chromaKey(src,tol){ // 自动抠图：取样边缘色为键色，色距内转透明、过渡带半透明
+  const im=await loadAny(src);
+  const sc=Math.min(1,768/Math.max(im.width,im.height));
+  const w=Math.round(im.width*sc),h=Math.round(im.height*sc);
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+  const d=x.getImageData(0,0,w,h),a=d.data;
+  const keys=[[0,0],[w-1,0],[0,h-1],[w-1,h-1],[w>>1,0],[w>>1,h-1],[0,h>>1],[w-1,h>>1]].map(([px,py])=>{const i=(py*w+px)*4;return[a[i],a[i+1],a[i+2]];});
+  const t=tol==null?42:tol,t2=t*1.7;
+  for(let i=0;i<a.length;i+=4){
+    let mn=1e9;
+    for(let ki=0;ki<8;ki++){const k=keys[ki],dr=a[i]-k[0],dg=a[i+1]-k[1],db=a[i+2]-k[2];const q=Math.sqrt(dr*dr+dg*dg+db*db);if(q<mn)mn=q;}
+    if(mn<t)a[i+3]=0;else if(mn<t2)a[i+3]=Math.round(255*(mn-t)/(t2-t));
+  }
+  x.putImageData(d,0,0);return c.toDataURL('image/png');
+}
+async function openWmLab(){ // 水印工坊：文字水印 / 素材抠图 / AI 画水印 / 自动打水印
+  openSheet('水印工坊（文字 · 素材抠图 · AI 画）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 14px';box.appendChild(wrap);
+  const cfg=Object.assign(defWm(),store.get('xy_wm')||{});
+  const base=lastLibImg();
+  let tab=cfg.type==='img'&&cfg.img?'img':'text';
+  wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">文字/图片水印随调随看；素材可以上传后自动抠图，或让 AI 画一张再抠。开「自动」后每张出图都带水印。</div>
+  <div style="display:flex;gap:6px;margin-bottom:8px">
+    <button id="wmTabT" type="button" class="mini ${tab==='text'?'pri':''}" style="flex:1">文字水印</button>
+    <button id="wmTabI" type="button" class="mini ${tab==='img'?'pri':''}" style="flex:1">图片素材</button>
+  </div>
+  <div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-bottom:10px;background:#111;min-height:60px"><canvas id="wmPrev" style="width:100%;display:block"></canvas></div>
+  <div id="wmBody"></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-top:8px"><input type="checkbox" id="wmAuto" ${store.get('xy_wm_auto')?'checked':''}> 出图自动打上这个水印</label>
+  <div style="display:flex;gap:6px;margin-top:8px"><button id="wmApplyLib" type="button" class="mini" style="flex:1">给最近一张图打水印</button></div>`;
+  const pv=$('#wmPrev'),body=$('#wmBody');let pvJob=0;
+  async function drawPrev(){
+    const my=++pvJob;
+    if(!base){pv.style.display='none';return;}
+    try{
+      const im=await loadAny(base);
+      const w=Math.round(im.width*Math.min(1,420/Math.max(im.width,im.height))),h=Math.round(im.height*Math.min(1,420/Math.max(im.width,im.height)));
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      const x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+      const sub=await new Promise(res=>c.toDataURL('image/jpeg',.9)?res(c.toDataURL('image/jpeg',.9)):res(''));
+      const out=await applyWm(sub);
+      const o=await loadAny(out);
+      if(my!==pvJob)return;
+      pv.width=o.width;pv.height=o.height;pv.getContext('2d').drawImage(o,0,0);pv.style.display='block';
+    }catch(e){pv.style.display='none';}
+  }
+  function slider(key,label,lo,hi,st,fmt){
+    const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:2px 0';
+    row.innerHTML=`<span style="flex:0 0 60px;font-size:12px;color:var(--muted)">${label}</span><input type="range" min="${lo}" max="${hi}" step="${st}" value="${cfg[key]}" style="flex:1"><b style="flex:0 0 48px;text-align:right;font-size:11px;color:var(--ink)">${fmt?fmt(cfg[key]):cfg[key]}</b>`;
+    const r=row.querySelector('input'),vb=row.querySelector('b');
+    r.oninput=()=>{cfg[key]=+r.value;vb.textContent=fmt?fmt(r.value):r.value;drawPrev();};
+    return row;
+  }
+  function renderBody(){
+    body.innerHTML='';
+    if(tab==='text'){
+      const f1=document.createElement('div');f1.className='field';f1.innerHTML='<label>水印文字</label>';
+      const inp=document.createElement('input');inp.value=cfg.text;inp.style.cssText='width:100%;border:1px solid var(--rule);background:var(--elev);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--ink)';inp.oninput=()=>{cfg.text=inp.value;drawPrev();};
+      f1.appendChild(inp);body.appendChild(f1);
+      const f2=document.createElement('div');f2.style.cssText='display:flex;gap:8px;align-items:center;margin:4px 0';
+      f2.innerHTML='<span style="font-size:12px;color:var(--muted)">颜色</span>';
+      const c1=document.createElement('input');c1.type='color';c1.value=cfg.color;c1.style.cssText='width:38px;height:30px;border:none;background:none';c1.oninput=()=>{cfg.color=c1.value;drawPrev();};
+      f2.appendChild(c1);
+      f2.insertAdjacentHTML('beforeend','<span style="font-size:12px;color:var(--muted);margin-left:8px">描边色</span>');
+      const c2=document.createElement('input');c2.type='color';c2.value=cfg.strokeC;c2.style.cssText='width:38px;height:30px;border:none;background:none';c2.oninput=()=>{cfg.strokeC=c2.value;drawPrev();};
+      f2.appendChild(c2);body.appendChild(f2);
+      body.appendChild(slider('sizePct','大小(宽%)',1,10,.1,v=>v+'%'));
+      body.appendChild(slider('alpha','透明度',.05,1,.05,v=>Math.round(v*100)+'%'));
+      body.appendChild(slider('rot','旋转',-90,90,1,v=>v+'°'));
+      body.appendChild(slider('stroke','描边',0,8,.5,v=>v));
+      const posRow=document.createElement('div');posRow.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin:6px 0';posRow.innerHTML='<span style="flex-basis:100%;font-size:12px;color:var(--muted)">位置（九宫）</span>';
+      ['左上','中上','右上','左中','居中','右中','左下','中下','右下'].forEach((t,i)=>{
+        const b=document.createElement('button');b.type='button';b.textContent=t;b.className='mini'+(cfg.pos===i?' pri':'');b.style.cssText='padding:5px 9px;font-size:11px';
+        b.onclick=()=>{cfg.pos=i;renderBody();drawPrev();};posRow.appendChild(b);
+      });
+      body.appendChild(posRow);
+      const tRow=document.createElement('label');tRow.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)';tRow.innerHTML=`<input type="checkbox" ${cfg.tile?'checked':''}> 平铺整张图（防盗图模式）`;
+      tRow.querySelector('input').onchange=e=>{cfg.tile=e.target.checked;drawPrev();};
+      body.appendChild(tRow);
+    }else{
+      const f1=document.createElement('div');f1.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin:4px 0';
+      f1.innerHTML=`<button id="wmUp" type="button" class="mini" style="flex:1">上传素材（白底/纯色底自动抠图）</button>
+      <button id="wmAi" type="button" class="mini pri" style="flex:1">AI 画一张水印素材</button>`;
+      body.appendChild(f1);
+      if(cfg.img){
+        const p=document.createElement('div');p.style.cssText='display:flex;align-items:center;gap:10px;margin:6px 0';
+        p.innerHTML=`<img id="wmImgPrev" style="width:64px;height:64px;object-fit:contain;background:repeating-conic-gradient(#8882 0 25%,#8884 0 50%) 0 0/14px 14px;border-radius:10px;border:1px solid var(--rule)">
+        <div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--ink)">素材已就绪</div><div style="font-size:11px;color:var(--faint)">透明 PNG 叠加，可平铺</div></div>
+        <button id="wmDel" type="button" class="mini" style="flex:0 0 auto;color:var(--danger,#c66)">移除</button>`;
+        body.appendChild(p);
+        body.appendChild(slider('imgPct','宽度(%)',5,60,1,v=>v+'%'));
+        body.appendChild(slider('alpha','透明度',.05,1,.05,v=>Math.round(v*100)+'%'));
+        body.appendChild(slider('rot','旋转',-90,90,1,v=>v+'°'));
+        const posRow=document.createElement('div');posRow.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin:6px 0';posRow.innerHTML='<span style="flex-basis:100%;font-size:12px;color:var(--muted)">位置（九宫）</span>';
+        ['左上','中上','右上','左中','居中','右中','左下','中下','右下'].forEach((t,i)=>{
+          const b=document.createElement('button');b.type='button';b.textContent=t;b.className='mini'+(cfg.pos===i?' pri':'');b.style.cssText='padding:5px 9px;font-size:11px';
+          b.onclick=()=>{cfg.pos=i;renderBody();drawPrev();};posRow.appendChild(b);
+        });
+        body.appendChild(posRow);
+        const tRow=document.createElement('label');tRow.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)';tRow.innerHTML=`<input type="checkbox" ${cfg.tile?'checked':''}> 平铺整张图`;
+        tRow.querySelector('input').onchange=e=>{cfg.tile=e.target.checked;drawPrev();};
+        body.appendChild(tRow);
+        loadAny(cfg.img).then(im=>{const el=$('#wmImgPrev');if(el)el.src=im.src;}).catch(()=>{});
+        $('#wmDel').onclick=()=>{cfg.img='';saveWm();renderBody();drawPrev();};
+      }
+      $('#wmUp').onclick=()=>{
+        const i=document.createElement('input');i.type='file';i.accept='image/*';
+        i.onchange=async e=>{
+          const fl=e.target.files[0];if(!fl)return;
+          toast('抠图处理中…');
+          try{
+            const d=await fileToDataURL(fl);
+            const key='wm:'+Date.now();
+            const cut=await chromaKey(d,42);
+            await idbSet(key,cut);
+            cfg.type='img';cfg.img='@idb:'+key;saveWm();renderBody();drawPrev();
+            toast('素材已抠好图（白底转透明），可调容差重抠');
+          }catch(err){toast('抠图失败：'+String(err.message||err).slice(0,60));}
+        };
+        i.click();
+      };
+      $('#wmAi').onclick=async()=>{
+        const p=activePreset();if(!p||!p.model)return toast('先配置绘画模型');
+        openTextOv('AI 画水印素材','可爱贴纸风格的签名图案，白底，边缘干净',{editable:true,extra:[
+          {label:'生成并抠图',cls:'pri',fn:async v=>{
+            const desc=String(v||'').trim();if(!desc)return toast('写点描述');
+            toast('生成素材中…');
+            try{
+              const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+              const src=await apiGenerate(p,{prompt:'sticker style, white background, simple, clean edges, '+desc,size:'512x512',neg:isNai?NEG_NAI:'lowres, bad quality, background clutter, photo, realistic'});
+              if(!src)throw new Error('没返回图片');
+              toast('抠图中…');
+              const cut=await chromaKey(src,46);
+              const key='wm:'+Date.now();
+              await idbSet(key,cut);
+              cfg.type='img';cfg.img='@idb:'+key;saveWm();renderBody();drawPrev();
+              toast('AI 水印素材已就位');
+            }catch(err){toast('AI 素材失败：'+String(err.message||err).slice(0,60));}
+          }}
+        ]});
+      };
+    }
+  }
+  function saveWm(){store.set('xy_wm',cfg);}
+  $('#wmTabT').onclick=()=>{tab='text';cfg.type='text';$('#wmTabT').classList.add('pri');$('#wmTabI').classList.remove('pri');saveWm();renderBody();drawPrev();};
+  $('#wmTabI').onclick=()=>{if(!cfg.img){renderBody();}tab='img';$('#wmTabI').classList.add('pri');$('#wmTabT').classList.remove('pri');saveWm();renderBody();drawPrev();};
+  $('#wmAuto').onchange=e=>{store.set('xy_wm_auto',e.target.checked);saveWm();toast(e.target.checked?'以后每张图自动带水印':'已关闭自动水印');};
+  $('#wmApplyLib').onclick=async()=>{
+    let tm=null,src=null;
+    for(let i=S.msgs.length-1;i>=0;i--){const m=S.msgs[i];if(m.kind==='image'){const a=m.imgs&&m.imgs.length?m.imgs:[m.img];if(a.length){tm=m;src=a[a.length-1];break;}}}
+    if(!tm)return toast('没有已出图的消息');
+    toast('打水印中…');
+    try{
+      const out=await applyWm(src);
+      if(tm.imgs&&tm.imgs.length)tm.imgs[tm.imgs.length-1]=out;else tm.img=out;
+      store.set('xy_msgs',S.msgs);renderMsgs();toast('水印已打上');
+    }catch(e){toast('失败：'+String(e.message||e).slice(0,60));}
+  };
+  renderBody();drawPrev();
+}
+/* ---- 动图工坊 ---- */
+async function openMotionLab(){ // 图组动效（零 API 导出 webm） / AI 视频（需视频模型）
+  openSheet('动图工坊（图组动效 · AI 视频）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.padding='4px 12px 14px';box.appendChild(wrap);
+  let tab='a';
+  wrap.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:8px">
+    <button id="mtTabA" type="button" class="mini pri" style="flex:1">图组动效（零 API）</button>
+    <button id="mtTabB" type="button" class="mini" style="flex:1">AI 视频（要视频模型）</button>
+  </div><div id="mtBody"></div>`;
+  const body=$('#mtBody');
+  function renderA(){
+    body.innerHTML='';
+    const pool=[];
+    S.msgs.slice(-40).forEach(m=>{if(m.kind==='image')((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean).forEach(s=>pool.push(s));});
+    const picks=pool.slice(-10);
+    if(picks.length<2){body.innerHTML='<div style="font-size:12px;color:var(--faint);padding:8px 0">最近的出图不到 2 张——先出几张图，回来把同角色的几张拼成动效（同 seed 换表情/动作最出效果）。</div>';return;}
+    body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:6px">勾 2-8 张图（按顺序播放），每张停留一会淡入下一张，导出 webm 视频存相册。</div>
+    <div id="mtGrid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:8px"></div>
+    <div id="mtSliders"></div>
+    <div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin:8px 0;background:#111"><canvas id="mtPrev" style="width:100%;display:block"></canvas></div>
+    <button id="mtGo" type="button" class="mini pri" style="width:100%">导出 webm 视频</button>
+    <div id="mtProg" style="font-size:12px;color:var(--faint);margin-top:6px"></div>`;
+    const sel=new Set([picks[picks.length-1],picks[picks.length-2]]);
+    let per=1.0,fade=true;
+    const grid=$('#mtGrid');
+    picks.slice().reverse().forEach(s=>{
+      const cell=document.createElement('label');cell.style.cssText='position:relative;display:block;aspect-ratio:3/4;border-radius:8px;overflow:hidden;border:1px solid var(--rule);cursor:pointer';
+      const im=document.createElement('img');im.src=String(s).startsWith('@idb:')?'':s;im.style.cssText='width:100%;height:100%;object-fit:cover';im.dataset.k=s;
+      if(String(s).startsWith('@idb:'))idbGet(s.slice(5)).then(d=>{if(d)im.src=d;});
+      const cb=document.createElement('input');cb.type='checkbox';cb.checked=sel.has(s);cb.style.cssText='position:absolute;top:3px;left:3px;margin:0';
+      cb.onchange=()=>{
+        if(cb.checked){if(sel.size>=8){cb.checked=false;toast('最多选 8 张');return;}sel.add(s);}
+        else sel.delete(s);
+      };
+      cell.appendChild(im);cell.appendChild(cb);grid.appendChild(cell);
+    });
+    const sl=$('#mtSliders');
+    const row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px';
+    row.innerHTML='<span style="flex:0 0 76px;font-size:12px;color:var(--muted)">每张秒数</span><input id="mtPer" type="range" min="0.4" max="3" step="0.1" value="1" style="flex:1"><b id="mtPerV" style="flex:0 0 40px;text-align:right;font-size:11px">1.0s</b>';
+    sl.appendChild(row);
+    row.querySelector('input').oninput=e=>{per=+e.target.value;$('#mtPerV').textContent=per.toFixed(1)+'s';};
+    const fRow=document.createElement('label');fRow.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)';fRow.innerHTML='<input type="checkbox" checked> 淡入淡出转场';
+    fRow.querySelector('input').onchange=e=>{fade=e.target.checked;};
+    sl.appendChild(fRow);
+    const pv=$('#mtPrev');
+    (async()=>{try{const im=await loadAny(picks[picks.length-1]);const w=Math.min(420,im.width),h=Math.round(im.height*w/im.width);pv.width=w;pv.height=h;pv.getContext('2d').drawImage(im,0,0,w,h);}catch(e){}})();
+    $('#mtGo').onclick=async()=>{
+      if(sel.size<2)return toast('至少勾 2 张');
+      const urls=picks.filter(s=>sel.has(s)); // 按时间正序播
+      const btn=$('#mtGo');btn.disabled=true;$('#mtProg').textContent='录制中…（大约 '+(urls.length*per).toFixed(1)+'s，别切走）';
+      try{
+        const size=await exportSlides(urls,per,fade,$('#mtProg'));
+        $('#mtProg').textContent='导出完成 · '+(size/1048576).toFixed(1)+'MB，已开始下载';
+      }catch(e){$('#mtProg').textContent='失败：'+String(e.message||e).slice(0,80);}
+      btn.disabled=false;
+    };
+  }
+  function renderB(){
+    body.innerHTML='';
+    const p=activePreset();
+    body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:6px">走中转站的 /video/generations 通用接口（提交任务→轮询→出片）。先在「配置」页填好「视频模型」。</div>
+    <div class="field"><label>画面描述</label><textarea id="mtPrompt" rows="3" style="width:100%;border:1px solid var(--rule);background:var(--elev);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--ink)" placeholder="如：男生缓缓抬头，发丝被风吹动，镜头轻微推近"></textarea></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin:4px 0"><input type="checkbox" id="mtUseImg"> 用最近一张图当首帧（图生视频）</label>
+    <button id="mtGen" type="button" class="mini pri" style="width:100%">生成视频</button>
+    <div id="mtProg" style="font-size:12px;color:var(--faint);margin-top:6px"></div>
+    <div id="mtOut" style="margin-top:8px"></div>`;
+    if(!p||!p.videoModel)$('#mtProg').textContent='还没配「视频模型」：去配置页填（如 kling / wan / minimax-video 等中转站提供的视频模型名）';
+    $('#mtGen').onclick=async()=>{
+      const pr=$('#mtPrompt').value.trim();if(!pr)return toast('先写画面描述');
+      const pp=activePreset();
+      if(!pp||!pp.videoModel)return toast('先去配置页填「视频模型」');
+      const btn=$('#mtGen');btn.disabled=true;
+      const prog=$('#mtProg');let tic=0;
+      prog.textContent='提交任务中…';
+      const timer=setInterval(()=>{tic++;prog.textContent='生成中… '+tic*5+'s（视频比图慢，常要 1-3 分钟）';},5000);
+      try{
+        let img=null;
+        if($('#mtUseImg').checked){img=lastLibImg();if(img&&String(img).startsWith('@idb:'))img=await idbGet(img.slice(5));}
+        const url=await apiVideo(pp,{prompt:pr,image:img});
+        clearInterval(timer);prog.textContent='出片了！';
+        $('#mtOut').innerHTML=`<video src="${esc(url)}" controls autoplay loop style="width:100%;border-radius:14px;border:1px solid var(--rule)"></video>
+        <a href="${esc(url)}" download="video-${Date.now()}.mp4" style="display:block;text-align:center;margin-top:6px;font-size:13px;color:var(--accent)">下载视频</a>`;
+      }catch(e){clearInterval(timer);prog.textContent='失败：'+String(e.message||e).slice(0,100);}
+      btn.disabled=false;
+    };
+  }
+  $('#mtTabA').onclick=()=>{tab='a';$('#mtTabA').classList.add('pri');$('#mtTabB').classList.remove('pri');renderA();};
+  $('#mtTabB').onclick=()=>{tab='b';$('#mtTabB').classList.add('pri');$('#mtTabA').classList.remove('pri');renderB();};
+  if(tab==='a')renderA();else renderB();
+}
+async function exportSlides(urls,per,fade,prog){ // 图组 → webm：canvas 逐帧画 + MediaRecorder 录制
+  const imgs=await Promise.all(urls.map(u=>loadAny(u)));
+  const w=Math.min(720,imgs[0].width),h=Math.round(imgs[0].height*w/imgs[0].width);
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  const mime=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
+  if(!mime)throw new Error('这个浏览器不支持录视频，用 Chrome 打开试试');
+  const stream=c.captureStream(30);
+  const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:5e6});
+  const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+  const done=new Promise(r=>rec.onstop=r);
+  rec.start(200);
+  const cover=im=>{const s=Math.max(w/im.width,h/im.height);const dw=im.width*s,dh=im.height*s;x.drawImage(im,(w-dw)/2,(h-dh)/2,dw,dh);};
+  const total=urls.length*per*1000,t0=performance.now();
+  await new Promise(fin=>{
+    (function loop(){
+      const el=performance.now()-t0;
+      if(el>=total+400){fin();return;}
+      const idx=Math.min(urls.length-1,el/(per*1000)|0);
+      x.clearRect(0,0,w,h);cover(imgs[idx]);
+      if(prog&&idx!==loop._i){loop._i=idx;prog.textContent='录制中… 第 '+(idx+1)+'/'+urls.length+' 张';}
+      const ph=(el/(per*1000))%1;
+      if(fade&&ph>.86&&idx<urls.length-1){x.globalAlpha=(ph-.86)/.14;cover(imgs[idx+1]);x.globalAlpha=1;}
+      requestAnimationFrame(loop);
+    })();
+  });
+  rec.stop();await done;
+  const blob=new Blob(chunks,{type:'video/webm'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='motion-'+Date.now()+'.webm';a.click();
+  return blob.size;
+}
+async function apiVideo(p,{prompt,image}){ // 通用视频接口：POST 提交 → 直接返回 url 则用，否则按任务号轮询
+  const root=apiRoot(p.baseUrl);
+  const body={model:p.videoModel,prompt};
+  if(image)body.image=String(image).startsWith('data:')?image:(await idbGet(String(image).slice(5))||image);
+  const r=await fetch(root+'/video/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify(body)});
+  if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,80));
+  const j=await r.json();
+  const pickUrl=o=>{if(!o||typeof o!=='object')return null;return o.url||o.video_url||(o.output&&(typeof o.output==='string'?o.output:(o.output.url||o.output.video_url)))||null;};
+  let u=pickUrl(j)||(Array.isArray(j.data)&&pickUrl(j.data[0]));
+  if(u)return u;
+  const id=j.id||j.task_id||(Array.isArray(j.data)&&j.data[0]&&(j.data[0].id||j.data[0].task_id));
+  if(!id)throw new Error('接口没返回视频地址/任务号，检查视频模型名');
+  for(let i=0;i<60;i++){
+    await new Promise(r2=>setTimeout(r2,5000));
+    let jj={};try{const rr=await fetch(root+'/video/generations/'+id,{headers:authHeaders(p.key)});jj=await rr.json();}catch(e){}
+    const st=String(jj.status||'').toLowerCase();
+    u=pickUrl(jj)||(Array.isArray(jj.data)&&pickUrl(jj.data[0]));
+    if(u)return u;
+    if(st.includes('fail')||st.includes('error')||st.includes('cancel'))throw new Error('视频任务失败：'+(jj.error||st));
+  }
+  throw new Error('等了 5 分钟还没好，任务号 '+id+'（可能还在跑，稍后重试）');
+}
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
 function isFigureTag(t){ // 形象词判别：存串只留「画风+人物类型」，滤掉长相/发型/妆容/服装/配饰/姿势——不然存一次串就把某个形象锁死，以后出图全员撞脸
