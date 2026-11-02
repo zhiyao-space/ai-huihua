@@ -4553,6 +4553,9 @@ $('#btnPlus').onclick=()=>{
     {icon:'redo',txt:'动图工坊（图组动效/AI 视频）',fn:openMotionLab},
     {icon:'quote',txt:'漫画工坊（分镜布局 · 气泡 · OC 互动）',fn:openComicLab},
     {icon:'quote',txt:'漫画书架（沉浸式追更阅读）',fn:openComicShelf},
+    {icon:'quote',txt:'OC 衣橱（换装出图）',fn:openWardrobePick},
+    {icon:'quote',txt:'角色关系图谱（关系网可视化）',fn:openRelMap},
+    {icon:'brush',txt:'海报拼贴工坊（杂志/专辑/拍立得）',fn:openPosterLab},
   ]);
 };
 
@@ -5753,7 +5756,7 @@ function ocEdit(id){
    +'<div class="field"><label>性别（合拍组人数 tag 用）</label><select id="ocG" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:9px 12px;font-size:13px;outline:none;color:var(--ink)"><option value="m"'+(c.gender!=='f'?' selected':'')+'>男</option><option value="f"'+(c.gender==='f'?' selected':'')+'>女</option></select></div>'
    +'<div class="field"><label>人设（性格/背景/说话风格，聊天就按这个演）</label><textarea id="ocP" rows="4" placeholder="例：表面高冷话少，其实护短；熬夜冠军；说话短，爱用省略号…" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">'+esc(c.persona)+'</textarea></div>'
    +'<div class="field"><label>外貌 tag（英文 danbooru，画头像和合照直接用）</label><textarea id="ocT" rows="3" placeholder="例：white hair, blue eyes, hoodie, chain" style="width:100%;background:var(--elev);border:1px solid var(--rule);border-radius:12px;padding:10px 12px;font-size:12.5px;outline:none;color:var(--ink);resize:vertical">'+esc(c.tags)+'</textarea>'
-   +'<div style="display:flex;gap:6px;margin-top:6px"><button class="oc-chip" id="ocAvaBtn" type="button">🎨 画头像</button><button class="oc-chip" id="ocAvaRnd" type="button">从词库拼外貌</button></div></div>'
+   +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="oc-chip" id="ocAvaBtn" type="button">🎨 画头像</button><button class="oc-chip" id="ocAvaRnd" type="button">从词库拼外貌</button><button class="oc-chip" id="ocWd" type="button">👗 衣橱</button></div></div>'
    +'<div class="field"><label>和其他 OC 的关系（留空=没关系）</label><div id="ocRels"></div></div>'
    +'<div style="display:flex;gap:8px;padding:4px 0 2px"><button class="oc-chip on" id="ocSave" type="button" style="flex:1;padding:10px">保存</button>'
    +(id&&!isMe?'<button class="oc-chip" id="ocDel" type="button" style="padding:10px;color:var(--danger)">删除</button>':'')+'</div>';
@@ -5787,6 +5790,7 @@ function ocEdit(id){
       btn.textContent='✅ 重画头像';toast('头像画好了，记得点保存');
     }catch(e){toast('画头像失败：'+String(e&&e.message||e).slice(0,60));btn.textContent='🎨 画头像';}
   };
+  w.querySelector('#ocWd').onclick=isNew?()=>toast('先把这张卡保存下来，再管理衣橱'):()=>openWardrobe(card);
   w.querySelector('#ocSave').onclick=()=>{
     c.name=w.querySelector('#ocN').value.trim();
     if(!c.name)return toast('名字不能为空');
@@ -6115,7 +6119,7 @@ async function openFilterLab(){ // 滤镜工坊：调参实时预览 · AI 调�
   const f=clampFlt(store.get('xy_filter_cur')||defFlt());
   const base=lastLibImg();
   wrap.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">调好存成配方，以后一键整套套用；也能一句话让 AI 调出想要的味道。</div>
-  <div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-bottom:10px;background:#111;min-height:60px"><canvas id="fltPrev" style="width:100%;display:block"></canvas></div>
+  <div id="fltCmp" style="position:relative;border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-bottom:6px;background:#111;min-height:60px;touch-action:none;cursor:ew-resize"><canvas id="fltPrev" style="width:100%;display:block"></canvas><canvas id="fltOrig" style="position:absolute;top:0;left:0;width:100%;height:100%;display:none;pointer-events:none"></canvas><div id="fltBar" style="position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 8px rgba(0,0,0,.6);display:none;pointer-events:none"></div><span id="fltTagB" style="position:absolute;top:8px;left:10px;font-size:10.5px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:2px 8px;display:none;pointer-events:none">原图</span><span id="fltTagA" style="position:absolute;top:8px;right:10px;font-size:10.5px;color:#fff;background:rgba(0,0,0,.55);border-radius:999px;padding:2px 8px;display:none;pointer-events:none">滤镜后</span><div id="fltHint" style="position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:10.5px;color:rgba(255,255,255,.9);display:none;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.8)">按住左右拖，对比前后</div></div>
   ${base?'':'<div style="font-size:12px;color:var(--faint);margin:6px 0">还没有底图：先出一张图再来，预览用最近那张。</div>'}
   <div id="fltSliders" style="display:flex;flex-direction:column;gap:2px"></div>
   <div style="display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap">
@@ -6130,15 +6134,32 @@ async function openFilterLab(){ // 滤镜工坊：调参实时预览 · AI 调�
   <div id="fltRecipes" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px"></div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)"><input type="checkbox" id="fltAuto" ${store.get('xy_filter_auto')?'checked':''}> 出图自动套用当前滤镜</label>
   <div style="display:flex;gap:6px;margin-top:8px"><button id="fltApplyLib" type="button" class="mini" style="flex:1">把滤镜套到最近一张图</button></div>`;
-  const pv=$('#fltPrev'),slBox=$('#fltSliders');let pvJob=0;
+  const pv=$('#fltPrev'),slBox=$('#fltSliders'),origC=$('#fltOrig'),cmpBox=$('#fltCmp'),cmpBar=$('#fltBar'),cmpTB=$('#fltTagB'),cmpTA=$('#fltTagA'),cmpHint=$('#fltHint');
+  let pvJob=0,cmpPct=50,cmpDrag=false;
+  function cmpShow(on){[origC,cmpBar,cmpTB,cmpTA,cmpHint].forEach(el=>el.style.display=on?'block':'none');}
+  function cmpApply(){ // 原图铺左半，滤镜后铺右半，中缝随拖动走
+    const p=Math.min(100,Math.max(0,Math.round(cmpPct)));
+    origC.style.clipPath='inset(0 '+(100-p)+'% 0 0)';
+    cmpBar.style.left=p+'%';
+    cmpTB.style.opacity=p>14?1:0;cmpTA.style.opacity=p<86?1:0;
+  }
   async function drawPrev(){
     const my=++pvJob;
-    if(!base){pv.style.display='none';return;}
-    try{const im=await loadAny(base);const c=fltCanvas(im,f,420);
+    if(!base){pv.style.display='none';cmpShow(false);return;}
+    try{
+      const im=await loadAny(base);const c=fltCanvas(im,f,420);
       if(my!==pvJob)return;
       pv.width=c.width;pv.height=c.height;pv.getContext('2d').drawImage(c,0,0);pv.style.display='block';
-    }catch(e){pv.style.display='none';}
+      if(origC.width!==c.width||origC.height!==c.height){origC.width=c.width;origC.height=c.height;}
+      const ox=origC.getContext('2d');ox.clearRect(0,0,origC.width,origC.height);ox.drawImage(im,0,0,c.width,c.height);
+      cmpShow(true);cmpApply();
+    }catch(e){pv.style.display='none';cmpShow(false);}
   }
+  const cmpSet=e=>{const r=cmpBox.getBoundingClientRect();cmpPct=(e.clientX-r.left)/r.width*100;cmpApply();};
+  cmpBox.addEventListener('pointerdown',e=>{if(!base)return;cmpDrag=true;try{cmpBox.setPointerCapture(e.pointerId);}catch(err){}cmpSet(e);e.preventDefault();});
+  cmpBox.addEventListener('pointermove',e=>{if(cmpDrag)cmpSet(e);});
+  cmpBox.addEventListener('pointerup',()=>{cmpDrag=false;});
+  cmpBox.addEventListener('pointercancel',()=>{cmpDrag=false;});
   function buildSliders(){
     slBox.innerHTML='';
     FLT_DEFS.forEach(([k,label,lo,hi,st])=>{
@@ -6861,6 +6882,7 @@ function renderShelf(){
     mk('阅读',()=>openComicReader(bk),true);
     mk('续画',()=>{CM.bookId=bk.id;CM.title=bk.n;comicSave();closeOverlays();setTimeout(openComicLab,140);});
     mk('改名',()=>{closeOverlays();setTimeout(()=>openTextOv('改漫画名',bk.n,{editable:true,onSave:v=>{if(v){bk.n=v.slice(0,20);booksSave();}openComicShelf();}}),140);});
+    mk('导出',()=>exportComicZip(bk));
     const del=mk('删除',()=>askConfirm('删除漫画','《'+bk.n+'》整本删掉？',()=>{BOOKS=BOOKS.filter(x=>x.id!==bk.id);booksSave();renderShelf();}));
     del.style.color='var(--danger)';
     row.appendChild(acts);
@@ -6892,6 +6914,368 @@ function openComicReader(bk){ // 全屏沉浸阅读：上下滚动翻页，滚�
     lab.textContent=cur+'/'+pages.length;
   },{passive:true});
   ov.querySelector('#rdX').onclick=()=>{ov.remove();if(ovHist){ovHist=false;try{history.back();}catch(e){}}};
+}
+
+/* ===== OC 换装衣橱：每张卡存多套服装方案，一键换装出图 ===== */
+function openWardrobe(card){
+  if(!card)return;
+  card.outfits=card.outfits||[];
+  openSheet('👗 衣橱 · '+card.name,[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 16px';box.appendChild(wrap);
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">给 '+esc(card.name)+' 存几套常穿的衣服（英文 danbooru tag 或中文都行），一键换装出图。出图会带上 TA 的外貌 tag 和启用的画师串。</div>'
+   +'<div style="display:flex;gap:6px;margin-bottom:10px"><input id="wdN" placeholder="套装名，如：冬日校服" style="flex:0 0 104px;min-width:0;'+CINP+'"><input id="wdS" placeholder="服装 tag：sailor uniform, scarf" style="flex:1;min-width:0;'+CINP+'"><button class="mini pri" id="wdAdd" type="button" style="flex:0 0 auto">添加</button></div>'
+   +'<div id="wdList"></div>';
+  const list=wrap.querySelector('#wdList');
+  function render(){
+    list.innerHTML='';
+    if(!card.outfits.length){list.innerHTML='<div style="font-size:12px;color:var(--faint);padding:10px 2px;line-height:1.7">衣橱还空着，加第一套吧。服装词可以抄「编辑卡 → 从词库拼外貌」里的 cloth 词条。</div>';return;}
+    card.outfits.forEach((ot,i)=>{
+      const row=document.createElement('div');row.style.cssText='border:1px solid var(--rule);border-radius:14px;padding:10px;margin-bottom:8px;background:var(--elev)';
+      row.innerHTML='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><b style="flex:1;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(ot.n)+'</b><button class="mini pri" data-go="'+i+'" type="button" style="flex:0 0 auto">穿这套出一张</button><button class="mini" data-del="'+i+'" type="button" style="flex:0 0 auto;color:var(--danger)">删</button></div>'
+       +'<input data-ed="'+i+'" value="'+esc(ot.s)+'" placeholder="服装 tag" style="width:100%;'+CINP+'">';
+      list.appendChild(row);
+    });
+    list.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>ocOutfitShoot(card,card.outfits[+b.dataset.go],b));
+    list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{card.outfits.splice(+b.dataset.del,1);ocSaveCards();render();});
+    list.querySelectorAll('[data-ed]').forEach(inp=>inp.onchange=()=>{card.outfits[+inp.dataset.ed].s=inp.value.trim();ocSaveCards();});
+  }
+  wrap.querySelector('#wdAdd').onclick=()=>{
+    const n=wrap.querySelector('#wdN').value.trim()||('套装'+(card.outfits.length+1));
+    const s=wrap.querySelector('#wdS').value.trim();
+    if(!s&&!card.tags)return toast('至少填一个服装 tag');
+    card.outfits.push({n:n.slice(0,12),s:s});
+    ocSaveCards();
+    wrap.querySelector('#wdN').value='';wrap.querySelector('#wdS').value='';
+    render();toast('已挂进衣橱');
+  };
+  render();
+}
+function openWardrobePick(){
+  const cards=ocCards().filter(Boolean);
+  if(!cards.length)return toast('先去 OC 里世界建角色卡');
+  openSheet('给谁换装？',cards.map(x=>({icon:'quote',txt:x.name+(x.id===(S.ocMe&&S.ocMe.id)?'（我）':''),fn:()=>{closeOverlays();openWardrobe(x);}})));
+}
+async function ocOutfitShoot(card,ot,btn){ // 一键换装出图：性别 tag + 套装 + 外貌 + 画师串 + 画质词
+  const p=activePreset();
+  if(!p||!p.model)return toast('先去「配置」页选好绘画模型');
+  if(!ot.s&&!card.tags)return toast('套装和角色都没填外貌词，先补一个');
+  const old=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='换装中…';}
+  toast(card.name+' 正在试衣间…');
+  try{
+    const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
+    const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, very aesthetic, absurdres';
+    const size=isNai?'832x1216':'512x768',neg=isNai?NEG_NAI:SAMP_NEG;
+    const arts=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+    let body=(card.gender==='f'?'1girl':'1boy')+', solo, full body, standing, '+(ot.s||'')+', '+(card.tags||'');
+    if(CJK_RE.test(body))body=await translatePrompt(p,body);
+    const prompt=[arts,body,QT].filter(Boolean).join(', ');
+    const src=await apiGenerate(p,{prompt,size:size,neg:neg});
+    if(!src){toast('接口没返回图片');return;}
+    const out=await postProcess(src);
+    pushMsg({id:uid(),role:'ai',kind:'image',img:out,prompt:prompt,text:'👗 '+card.name+' 穿上了「'+ot.n+'」',snap:{prompt:prompt,neg:neg,size:size,seed:'',count:1},ts:Date.now()});
+    S.ocMsgs.push({who:card.id,n:card.name,t:'👗（换上了「'+ot.n+'」）',img:await shrinkImg(out,160,.75),ts:Date.now()});
+    ocSaveMsgs();ocRenderFlow();
+  }catch(e){toast('换装出图失败：'+String(e&&e.message||e).slice(0,60));}
+  finally{if(btn){btn.disabled=false;btn.textContent=old;}}
+}
+
+/* ===== 角色关系图谱：环形 SVG 关系网，点头像高亮，可导出 PNG ===== */
+const PFAM='system-ui,-apple-system,"PingFang SC","Noto Sans SC",sans-serif';
+function openRelMap(){
+  const cards=ocCards().filter(Boolean);
+  if(!cards.length)return toast('先去 OC 里世界建几张角色卡');
+  const W=900,H=940,cx=W/2,cy=H/2+20,NR=42;
+  const R=cards.length===1?0:Math.min(340,W*.42);
+  const pos={};
+  cards.forEach((c,i)=>{
+    const a=cards.length===1?0:(-Math.PI/2+i*2*Math.PI/cards.length);
+    pos[c.id]=[cx+R*Math.cos(a),cy+R*Math.sin(a)];
+  });
+  const edges=[],seen={};
+  cards.forEach(c=>{
+    if(!c.rels)return;
+    for(const k in c.rels){
+      if(!pos[k]||!pos[c.id])continue;
+      const key=[c.id,k].sort().join('|');
+      if(seen[key])continue;
+      seen[key]=1;edges.push({a:c.id,b:k,t:c.rels[k]});
+    }
+  });
+  openSheet('角色关系图谱（'+cards.length+' 位角色 · '+edges.length+' 条关系）',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 16px';box.appendChild(wrap);
+  const DEF_INFO='点头像看一个人的关系网，再点一下还原';
+  let s='<svg id="relSvg" viewBox="0 0 '+W+' '+H+'" style="width:100%;display:block;background:var(--elev);border:1px solid var(--rule);border-radius:16px;user-select:none">'
+   +'<style>.relT{font:11.5px '+PFAM+';fill:var(--muted);paint-order:stroke;stroke:var(--elev);stroke-width:4px;stroke-linejoin:round}.relLbl{font:600 14px '+PFAM+';fill:var(--ink);paint-order:stroke;stroke:var(--elev);stroke-width:4px;stroke-linejoin:round}.relN{cursor:pointer;transition:opacity .18s}.relE line{stroke:var(--rule2);stroke-width:1.6}.relDim{opacity:.12}.relRing{fill:none;stroke:var(--ink);stroke-width:3;opacity:0}.relN.on .relRing{opacity:1}</style>';
+  edges.forEach((ed,ei)=>{
+    const a=pos[ed.a],b=pos[ed.b];
+    s+='<g class="relE" data-ei="'+ei+'"><line x1="'+a[0]+'" y1="'+a[1]+'" x2="'+b[0]+'" y2="'+b[1]+'"/>';
+    if(ed.t)s+='<text class="relT" text-anchor="middle" x="'+((a[0]+b[0])/2)+'" y="'+((a[1]+b[1])/2-9)+'">'+esc(ed.t)+'</text>';
+    s+='</g>';
+  });
+  cards.forEach(c=>{
+    const px=pos[c.id][0],py=pos[c.id][1];
+    s+='<clipPath id="rcp'+c.id+'"><circle cx="'+px+'" cy="'+py+'" r="'+(NR-2)+'"/></clipPath>';
+    s+='<g class="relN" data-id="'+c.id+'">';
+    if(c.img)s+='<image href="'+esc(c.img)+'" x="'+(px-NR)+'" y="'+(py-NR)+'" width="'+NR*2+'" height="'+NR*2+'" preserveAspectRatio="xMidYMid slice" clip-path="url(#rcp'+c.id+')"/>';
+    else s+='<circle cx="'+px+'" cy="'+py+'" r="'+(NR-2)+'" fill="var(--hover)"/><text class="relLbl" text-anchor="middle" x="'+px+'" y="'+(py+6)+'" style="font-size:18px">'+esc((c.name||'?').slice(0,1))+'</text>';
+    s+='<circle class="relRing" cx="'+px+'" cy="'+py+'" r="'+NR+'"/><text class="relLbl" text-anchor="middle" x="'+px+'" y="'+(py+NR+24)+'">'+esc(c.name)+'</text></g>';
+  });
+  s+='</svg>';
+  wrap.innerHTML='<div id="relSvgWrap">'+s+'</div>'
+   +'<div id="relInfo" style="border:1px solid var(--rule);border-radius:14px;padding:10px 12px;margin-top:10px;background:var(--elev);font-size:12.5px;color:var(--muted);line-height:1.6">'+DEF_INFO+'</div>'
+   +'<div style="display:flex;gap:6px;margin-top:10px"><button class="mini pri" id="relExport" type="button" style="flex:1">⬇️ 导出设定图 PNG</button></div>';
+  const sv=wrap.querySelector('#relSvg'),info=wrap.querySelector('#relInfo');
+  let sel=null;
+  sv.addEventListener('click',e=>{
+    const g=e.target.closest('.relN');
+    const reset=()=>{sel=null;sv.querySelectorAll('.relDim').forEach(x=>x.classList.remove('relDim'));sv.querySelectorAll('.relN.on').forEach(x=>x.classList.remove('on'));info.innerHTML=DEF_INFO;};
+    if(!g){reset();return;}
+    const id=g.dataset.id;
+    if(sel===id){reset();return;}
+    sel=id;
+    sv.querySelectorAll('.relDim').forEach(x=>x.classList.remove('relDim'));
+    sv.querySelectorAll('.relN.on').forEach(x=>x.classList.remove('on'));
+    const keep=new Set([id]);
+    sv.querySelectorAll('[data-ei]').forEach(el=>{
+      const ed=edges[+el.dataset.ei];
+      if(ed.a===id||ed.b===id){keep.add(ed.a);keep.add(ed.b);}
+      else el.classList.add('relDim');
+    });
+    sv.querySelectorAll('.relN').forEach(n=>{if(!keep.has(n.dataset.id))n.classList.add('relDim');});
+    g.classList.add('on');
+    const c=ocById(id),rl=[];
+    if(c&&c.rels)for(const k in c.rels){const o=ocById(k);if(o)rl.push('· '+o.name+'：'+c.rels[k]);}
+    info.innerHTML='<b style="font-size:13.5px;color:var(--ink)">'+esc(c?c.name:'')+'</b><span style="display:block;margin-top:2px">'+esc(c&&c.persona?c.persona:'（还没写人设）')+'</span>'
+     +(rl.length?'<span style="display:block;margin-top:4px;color:var(--faint)">'+rl.map(x=>esc(x)).join('<br>')+'</span>':'<span style="display:block;margin-top:4px;color:var(--faint)">还没有关系线，去 OC 编辑里拉几条</span>');
+  });
+  wrap.querySelector('#relExport').onclick=async()=>{ // canvas 重画导出（SVG 里的 CSS 变量导不出，直接用固定色重画一份）
+    toast('正在生成设定图…');
+    try{
+      const sc2=2,c=document.createElement('canvas');c.width=W*sc2;c.height=H*sc2;
+      const x=c.getContext('2d');x.scale(sc2,sc2);
+      x.fillStyle='#f7f7f4';x.fillRect(0,0,W,H);
+      x.fillStyle='#141414';x.font='700 38px '+PFAM;x.textAlign='center';
+      x.fillText('OC 关系图谱',cx,86);
+      edges.forEach(ed=>{
+        const a=pos[ed.a],b=pos[ed.b];
+        x.strokeStyle='#c8c8d0';x.lineWidth=2;x.beginPath();x.moveTo(a[0],a[1]);x.lineTo(b[0],b[1]);x.stroke();
+        if(ed.t){
+          const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2-9;
+          x.font='500 15px '+PFAM;x.lineWidth=6;x.strokeStyle='#f7f7f4';x.strokeText(ed.t,mx,my);
+          x.fillStyle='#55555f';x.fillText(ed.t,mx,my);
+        }
+      });
+      for(const cd of cards){
+        const px=pos[cd.id][0],py=pos[cd.id][1],r=NR-2;
+        let im=null;
+        try{if(cd.img)im=await loadAny(cd.img);}catch(e){}
+        x.save();x.beginPath();x.arc(px,py,r,0,7);x.clip();
+        if(im){
+          const ir=im.width/im.height;let sw,sh,sx,sy;
+          if(ir>1){sh=im.height;sw=sh;sy=0;sx=(im.width-sh)/2;}else{sw=im.width;sh=sw;sx=0;sy=(im.height-sw)/2;}
+          x.drawImage(im,sx,sy,sw,sh,px-r,py-r,r*2,r*2);
+        }else{
+          x.fillStyle='#e9e9f0';x.fillRect(px-r,py-r,r*2,r*2);
+          x.fillStyle='#8a8a96';x.font='700 34px '+PFAM;x.textAlign='center';x.textBaseline='middle';x.fillText((cd.name||'?').slice(0,1),px,py+2);x.textBaseline='alphabetic';
+        }
+        x.restore();
+        x.strokeStyle='#141414';x.lineWidth=2.5;x.beginPath();x.arc(px,py,r,0,7);x.stroke();
+        x.fillStyle='#141414';x.font='600 17px '+PFAM;x.textAlign='center';x.fillText(cd.name,px,py+NR+24);
+      }
+      x.fillStyle='#9a9aa4';x.font='500 13px '+PFAM;x.textAlign='center';x.fillText('小艺绘画 · '+new Date().toLocaleDateString('zh-CN'),cx,H-26);
+      const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='OC关系图谱_'+Date.now()+'.png';a.click();
+      toast('已导出 PNG');
+    }catch(e){toast('导出失败：'+String(e&&e.message||e).slice(0,60));}
+  };
+}
+
+/* ===== 海报拼贴工坊：杂志封面 / 专辑封面 / 拍立得，纯本地 canvas 合成 ===== */
+function openPosterLab(){
+  openSheet('海报拼贴工坊',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 16px';box.appendChild(wrap);
+  let tpl='mag',job=0;
+  const cur={img:lastLibImg()};
+  const TPLN={mag:'杂志封面',alb:'专辑封面',pol:'拍立得'};
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">把最近的出图套进杂志封面 / 专辑封面 / 拍立得模板，本地 canvas 排版合成，不走接口。</div>'
+   +'<div id="pstTpls" style="display:flex;gap:6px;margin-bottom:10px"></div>'
+   +'<div style="border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-bottom:10px;background:#111;min-height:60px"><canvas id="pstPrev" style="width:100%;display:block"></canvas></div>'
+   +'<div style="font-size:12px;color:var(--muted);margin:2px 0 6px">底图（最近出图，点选）</div>'
+   +'<div id="pstStrip" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px"></div>'
+   +'<div class="field"><label>主标题</label><input id="pstT" placeholder="如：暮色画报 / 夜航电台" style="width:100%;'+CINP+'"></div>'
+   +'<div class="field"><label>副标题</label><input id="pstS" placeholder="如：十一月特集 · 夜色温柔" style="width:100%;'+CINP+'"></div>'
+   +'<div style="display:flex;gap:6px;margin:8px 0 2px"><button class="mini pri" id="pstSave" type="button">⬇️ 保存 PNG</button><button class="mini" id="pstGo" type="button">发到对话</button></div>';
+  const prev=wrap.querySelector('#pstPrev'),tI=wrap.querySelector('#pstT'),sI=wrap.querySelector('#pstS');
+  const tb=wrap.querySelector('#pstTpls');
+  [['mag','📰 杂志封面'],['alb','💿 专辑封面'],['pol','📷 拍立得']].forEach(it=>{
+    const b=document.createElement('button');b.type='button';b.className='mini'+(tpl===it[0]?' pri':'');b.textContent=it[1];
+    b.onclick=()=>{tpl=it[0];tb.querySelectorAll('button').forEach(x=>x.classList.remove('pri'));b.classList.add('pri');draw();};
+    tb.appendChild(b);
+  });
+  function pstCover(x,im,ox,oy,w,h){ // cover 模式铺图
+    const ir=im.width/im.height,cr=w/h;let sw,sh;
+    if(ir>cr){sh=im.height;sw=sh*cr;}else{sw=im.width;sh=sw/cr;}
+    x.drawImage(im,(im.width-sw)/2,(im.height-sh)/2,sw,sh,ox,oy,w,h);
+  }
+  function pstFit(x,txt,maxW,weight,fam,start){ // 字号自适应塞进宽度
+    let s=start;
+    for(;s>12;s-=2){x.font=weight+' '+s+'px '+fam;if(x.measureText(txt).width<=maxW)break;}
+    x.font=weight+' '+s+'px '+fam;return s;
+  }
+  function drawMag(c,im){
+    const W=760,H=1020;c.width=W;c.height=H;const x=c.getContext('2d');
+    x.fillStyle='#d8d8d2';x.fillRect(0,0,W,H);
+    pstCover(x,im,0,0,W,H);
+    let g=x.createLinearGradient(0,0,0,340);g.addColorStop(0,'rgba(0,0,0,.62)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,W,340);
+    g=x.createLinearGradient(0,H-440,0,H);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.8)');x.fillStyle=g;x.fillRect(0,H-440,W,440);
+    const T=tI.value.trim()||'未命名画报';
+    x.textAlign='center';x.fillStyle='#fff';
+    pstFit(x,T,W-140,'700',PFAM,104);x.fillText(T,W/2,166);
+    x.font='500 21px '+PFAM;x.fillText(TPLN.mag+' · '+new Date().toLocaleDateString('zh-CN'),W/2,212);
+    x.fillStyle='rgba(255,255,255,.9)';x.fillRect(W/2-36,234,72,3);
+    const Sb=sI.value.trim();
+    if(Sb){
+      x.textAlign='left';x.fillStyle='#fff';
+      pstFit(x,Sb,W-150,'800',PFAM,56);x.fillText(Sb,46,H-100);
+      x.font='600 19px '+PFAM;x.fillStyle='rgba(255,255,255,.78)';x.fillText('COVER STORY · 本期看点',46,H-152);
+    }
+    const bw=128,bh=52,bx=W-bw-42,by=H-bh-42;
+    x.fillStyle='#fff';x.fillRect(bx-10,by-10,bw+20,bh+20);
+    x.fillStyle='#111';
+    for(let i=0;i<24;i++)x.fillRect(bx+i*5,by,1+((i*7)%3),bh);
+  }
+  function drawAlb(c,im){
+    const W=900,H=900;c.width=W;c.height=H;const x=c.getContext('2d');
+    x.fillStyle='#141418';x.fillRect(0,0,W,H);
+    pstCover(x,im,0,0,W,H);
+    const g=x.createLinearGradient(0,H-470,0,H);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.84)');x.fillStyle=g;x.fillRect(0,H-470,W,470);
+    const T=tI.value.trim()||'未命名专辑';
+    x.textAlign='left';x.fillStyle='#fff';
+    pstFit(x,T,W-130,'800',PFAM,88);x.fillText(T,54,H-136);
+    x.font='500 25px '+PFAM;x.fillStyle='rgba(255,255,255,.85)';
+    x.fillText(sI.value.trim()||('小艺绘画 · '+new Date().getFullYear()),56,H-80);
+    x.textAlign='right';x.font='600 19px '+PFAM;x.fillStyle='rgba(255,255,255,.75)';x.fillText('33⅓ RPM · STEREO',W-52,60);
+    x.save();x.translate(W-108,118);x.rotate(.12);
+    x.fillStyle='#e8443a';x.beginPath();x.arc(0,0,50,0,7);x.fill();
+    x.fillStyle='#fff';x.textAlign='center';x.font='800 24px '+PFAM;x.fillText('NEW',0,8);x.restore();
+  }
+  function drawPol(c,im){
+    const W=860,H=1040;c.width=W;c.height=H;const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#26262c');g.addColorStop(1,'#101014');
+    x.fillStyle=g;x.fillRect(0,0,W,H);
+    x.save();x.translate(W/2,H/2);x.rotate(-.02);
+    const cw=690,ch=850;
+    x.shadowColor='rgba(0,0,0,.55)';x.shadowBlur=32;x.shadowOffsetY=14;
+    x.fillStyle='#fbfbf8';x.fillRect(-cw/2,-ch/2,cw,ch);
+    x.shadowColor='transparent';x.shadowBlur=0;x.shadowOffsetY=0;
+    const iw=cw-56;
+    x.fillStyle='#e3e3de';x.fillRect(-cw/2+28,-ch/2+28,iw,iw);
+    x.save();x.beginPath();x.rect(-cw/2+28,-ch/2+28,iw,iw);x.clip();
+    pstCover(x,im,-cw/2+28,-ch/2+28,iw,iw);x.restore();
+    const cap=sI.value.trim()||tI.value.trim()||'a slow afternoon';
+    x.fillStyle='#33333a';x.textAlign='center';
+    pstFit(x,cap,cw-90,'600','"Bradley Hand","Segoe Script",cursive',38);
+    x.fillText(cap,0,ch/2-46);
+    x.restore();
+    x.fillStyle='rgba(255,255,255,.6)';x.font='600 19px '+PFAM;x.textAlign='center';
+    x.fillText(tI.value.trim()||('— '+TPLN.pol+' —'),W/2,H-52);
+  }
+  async function draw(){
+    const my=++job;
+    if(!cur.img){prev.style.display='none';return;}
+    try{
+      const im=await loadAny(cur.img);
+      if(my!==job)return;
+      const c=document.createElement('canvas');
+      if(tpl==='mag')drawMag(c,im);else if(tpl==='alb')drawAlb(c,im);else drawPol(c,im);
+      prev.width=c.width;prev.height=c.height;prev.getContext('2d').drawImage(c,0,0);prev.style.display='block';
+    }catch(e){prev.style.display='none';}
+  }
+  const strip=wrap.querySelector('#pstStrip');
+  function renderStrip(){
+    const list=[];
+    for(let i=S.msgs.length-1;i>=0&&list.length<10;i--){
+      const m=S.msgs[i];
+      if(m.kind!=='image')continue;
+      ((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean).forEach(v=>{if(!list.includes(v))list.push(v);});
+    }
+    strip.innerHTML=list.length?'':'<span style="font-size:11.5px;color:var(--faint)">还没有出过图；先去画一张，再回来选底图</span>';
+    list.forEach(v=>{
+      const b=document.createElement('button');b.type='button';
+      b.style.cssText='flex:0 0 auto;width:62px;height:62px;border-radius:10px;border:2px solid '+(cur.img===v?'var(--ink)':'transparent')+';padding:0;overflow:hidden;background:#222;cursor:pointer';
+      b.innerHTML='<img style="width:100%;height:100%;object-fit:cover;display:block" alt="">';
+      const im=b.firstChild;
+      if(String(v).startsWith('@idb:'))idbGet(String(v).slice(5)).then(u=>{if(u)im.src=u;});
+      else im.src=v;
+      b.onclick=()=>{cur.img=v;renderStrip();draw();};
+      strip.appendChild(b);
+    });
+  }
+  wrap.querySelector('#pstSave').onclick=()=>{
+    if(!prev.width)return toast('先选一张底图');
+    const a=document.createElement('a');a.href=prev.toDataURL('image/png');a.download='poster_'+Date.now()+'.png';a.click();toast('已保存');
+  };
+  wrap.querySelector('#pstGo').onclick=()=>{
+    if(!prev.width)return toast('先选一张底图');
+    const out=prev.toDataURL('image/jpeg',.92);
+    pushMsg({id:uid(),role:'ai',kind:'image',img:out,prompt:'海报拼贴 · '+TPLN[tpl],text:'🖼️ 海报拼贴出炉（'+TPLN[tpl]+'），点开保存',snap:{prompt:'海报拼贴 · '+TPLN[tpl],neg:'',size:prev.width+'x'+prev.height,seed:'',count:1},ts:Date.now()});
+  };
+  tI.addEventListener('input',draw);sI.addEventListener('input',draw);
+  renderStrip();draw();
+}
+
+/* ===== 漫画整本导出 ZIP（store 无压缩 + CRC32，零依赖） ===== */
+function zipMake(files){
+  const te=new TextEncoder(),d=new Date();
+  const dosT=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  const dosD=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  const parts=[],cens=[];let off=0;
+  files.forEach(f=>{
+    const nm=te.encode(f.name),u8=f.u8,crc=crc32(u8,0,u8.length);
+    const lh=new Uint8Array(30+nm.length),lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);
+    lv.setUint16(10,dosT,true);lv.setUint16(12,dosD,true);
+    lv.setUint32(14,crc,true);lv.setUint32(18,u8.length,true);lv.setUint32(22,u8.length,true);
+    lv.setUint16(26,nm.length,true);lv.setUint16(28,0,true);lh.set(nm,30);
+    parts.push(lh,u8);
+    const cd=new Uint8Array(46+nm.length),cv=new DataView(cd.buffer);
+    cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);cv.setUint16(10,0,true);
+    cv.setUint16(12,dosT,true);cv.setUint16(14,dosD,true);
+    cv.setUint32(16,crc,true);cv.setUint32(20,u8.length,true);cv.setUint32(24,u8.length,true);
+    cv.setUint16(28,nm.length,true);cv.setUint32(42,off,true);cd.set(nm,46);
+    cens.push(cd);
+    off+=lh.length+u8.length;
+  });
+  const cdB=concatBytes(cens);
+  const end=new Uint8Array(22),ev=new DataView(end.buffer);
+  ev.setUint32(0,0x06054b50,true);ev.setUint16(8,files.length,true);ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdB.length,true);ev.setUint32(16,off,true);
+  return concatBytes(parts.concat([cdB,end]));
+}
+async function exportComicZip(bk){ // 每页从 IndexedDB 取回 → 打包 zip 下载
+  const pages=bk.pages||[];
+  if(!pages.length)return toast('这本还没有页，先去续画');
+  toast('正在打包《'+bk.n+'》（'+pages.length+' 页）…');
+  try{
+    const files=[];
+    for(let i=0;i<pages.length;i++){
+      let raw=pages[i];
+      if(String(raw).startsWith('@idb:'))raw=await idbGet(String(raw).slice(5));
+      if(!raw||!String(raw).startsWith('data:'))continue;
+      const ext=String(raw).slice(5,10).indexOf('png')===0?'png':'jpg';
+      files.push({name:'第'+String(i+1).padStart(2,'0')+'页.'+ext,u8:dataUrlToBytes(raw)});
+    }
+    if(!files.length)return toast('页面数据读不到了');
+    const u8=zipMake(files);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([u8],{type:'application/zip'}));
+    a.download=bk.n+'.zip';a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    toast('打包完成：'+files.length+' 页 · '+(u8.length/1048576).toFixed(1)+' MB');
+  }catch(e){toast('导出失败：'+String(e&&e.message||e).slice(0,60));}
 }
 
 /* ---- 生成图设为 OC/用户人设形象 ---- */
