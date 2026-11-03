@@ -3332,9 +3332,22 @@ let libTab='combo',libQ='';
 const libHas=s=>S.artists.some(a=>a.str===s);
 function libAdd(it){
   if(libHas(it.s)){toast('「'+it.n+'」已经在画师串里了');return;}
+  const offNames=comboAbsorbOff(it.s); // 启用词库串时，成分被它完全吸收的旧串自动熄火，避免新旧叠加混出未知画风
   S.artists.unshift({id:uid(),name:it.n,str:it.s,on:true});
   persist('xy_artists',S.artists,false);renderArtists();
-  toast('「'+it.n+'」已加入画师串并启用');
+  toast('「'+it.n+'」已加入画师串并启用'+(offNames.length?'，自动停用被吸收的 '+offNames.length+' 条旧串':''));
+}
+function comboAbsorbOff(str){ // 画师成分吸收判定：某条启用旧串的全部成分都出现在新串里 → 该旧串自动停用。按 token 归一化比对（去括号/权重/artist: 前缀），整串写法不同也能认出同源
+  const norm=t=>String(t).toLowerCase().replace(/[(){}[\]]/g,'').replace(/^artist[:：]/,'').replace(/:\s*\d*\.?\d+\s*$/,'').replace(/\s+/g,' ').trim();
+  const toks=new Set(String(str).split(',').map(norm).filter(Boolean));
+  const names=[];
+  S.artists.forEach(a=>{
+    if(!a.on)return;
+    const at=String(a.str||'').split(',').map(norm).filter(Boolean);
+    if(at.length&&at.every(t=>toks.has(t))){a.on=false;names.push(a.name||'未命名串');}
+  });
+  if(names.length)persist('xy_artists',S.artists,false);
+  return names;
 }
 function libImgOf(str){ // 取小样：本地重roll版优先，其次内置包（v2清单存URL按需加载，兼容v1全量dataURL）；@idb: 引用不算可直接用的 src
   const e=S.libimg[str];
@@ -4387,18 +4400,14 @@ function openComboLab(){
     const str=comboStr();if(!str)return toast('先加原料');
     genSample(str,$('#clName').value.trim()||'我的串预览');
   };
-  $('#clToArt').onclick=()=>{ // 加入画师串并启用；原料里已单独启用的串自动停用，防新旧几条各走各的互相拉扯串风
+  $('#clToArt').onclick=()=>{ // 加入画师串并启用；成分被新串完全吸收的旧串自动停用，防新旧几条各走各的互相拉扯串风
     const str=comboStr();if(!str)return toast('先加原料');
     if(libHas(str)){toast('这条串已经在画师串里了');return;}
-    let off=0;
-    comboIng.forEach(x=>{ // 原料串已在清单里启用 → 关掉旧的，只留调和后的新基因串
-      const ex=S.artists.find(a=>a.on&&String(a.str).trim().toLowerCase()===String(x.s).trim().toLowerCase());
-      if(ex){ex.on=false;off++;}
-    });
+    const offNames=comboAbsorbOff(str); // 先熄火被吸收的旧串，再上新生因串
     S.artists.unshift({id:uid(),name:comboName(true),str:str.slice(0,300),on:true});
     persist('xy_artists',S.artists,false);renderArtists();
     const onN=S.artists.filter(a=>a.on).length;
-    toast('已启用「'+comboName(true)+'」'+(off?'，自动停用 '+off+' 条重复原料串':'')+(onN>3?'。⚠️ 当前启用 '+onN+' 条偏多，容易各走各的串风，建议关到 3 条内':''));
+    toast('已启用「'+comboName(true)+'」'+(offNames.length?'，自动停用被吸收的 '+offNames.length+' 条旧串（'+offNames.slice(0,2).join('、')+'）':'')+(onN>3?'。⚠️ 当前启用 '+onN+' 条偏多，容易各走各的串风，建议关到 3 条内':''));
   };
   $('#clSave').onclick=()=>{
     const str=comboStr();if(!str)return toast('先加原料');
