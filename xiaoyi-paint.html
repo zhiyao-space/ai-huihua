@@ -604,7 +604,7 @@ select.sel{width:100%;background:var(--elev);border:1px solid var(--rule);border
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h7M4 18h10"/><circle cx="18" cy="6" r="2.5"/><circle cx="15.5" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></svg>画师串配方器（选画师 / 手输 tag / 调权重，存为我的串）
         </button>
         <button class="add-card" id="btnStyleLock" style="margin-top:10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>画风锁（提取画风指纹，防串风漂移）
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span id="slBtnTxt">画风锁（提取画风指纹，防串风漂移）</span>
         </button>
       </div>
       <div class="sec">
@@ -1490,9 +1490,12 @@ function naiBody(p,{prompt,neg='',size='832x1216',seed='',steps='',sampler='',ac
   }
   if(action==='infill'){prm.mask=maskB64;prm.add_original_image=true;}
   if(vibes&&vibes.length){
+    const L=S.styleLock; // 画风锁滑杆：启用时参考图强度/信息提取由用户控制（NAI 直连全路径生效），未启用走官方常用默认
+    const dInfo=(L&&L.on&&L.vibInfo!=null)?Math.max(0.05,Math.min(1,+L.vibInfo||0.7)):0.7;
+    const dStr=(L&&L.on&&L.vibStr!=null)?Math.max(0.05,Math.min(1,+L.vibStr||0.6)):0.6;
     prm.reference_image_multiple=vibes.map(v=>v.img);
-    prm.reference_information_extracted_multiple=vibes.map(v=>v.info==null?0.7:v.info);
-    prm.reference_strength_multiple=vibes.map(v=>v.str==null?0.6:v.str);
+    prm.reference_information_extracted_multiple=vibes.map(v=>v.info==null?dInfo:v.info);
+    prm.reference_strength_multiple=vibes.map(v=>v.str==null?dStr:v.str);
     prm.normalize_reference_strength_multiple=false;
   }
   return {input:prompt,model:modelOverride||p.model,action,parameters:prm};
@@ -4516,6 +4519,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
    +'<button class="mini" id="slUp" type="button" style="width:100%;margin-top:6px">📷 从本地上传参考图</button><input type="file" id="slFile" accept="image/*" style="display:none">'
    +'<div style="display:flex;gap:6px;margin-top:8px"><button class="mini pri" id="slGetStyle" type="button" style="flex:1">🎨 提取画风</button><button class="mini" id="slGetFace" type="button" style="flex:1">👤 提取长相</button></div>'
    +'<div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--rule);border-radius:12px;padding:8px 12px;margin-top:8px"><span id="slVibeTip" style="font-size:11.5px;color:var(--muted);flex:1;line-height:1.5"></span><button class="mini" id="slVibeOff" type="button" style="flex:0 0 auto">解绑</button></div></div>'
+   +'<div class="field"><label>Vibe 参考强度 <b id="slVibStrV">'+(L.vibStr==null?'0.6':L.vibStr)+'</b>（NAI 直连生效 · 越高锁得越死，过高会糊脸）</label><input type="range" id="slVibStr" min="0.1" max="1" step="0.05" value="'+(L.vibStr==null?0.6:L.vibStr)+'" style="width:100%"></div>'
+   +'<div class="field"><label>信息提取 <b id="slVibInfoV">'+(L.vibInfo==null?'0.7':L.vibInfo)+'</b>（越高越抠画风细节，过低等于没锁）</label><input type="range" id="slVibInfo" min="0.1" max="1" step="0.05" value="'+(L.vibInfo==null?0.7:L.vibInfo)+'" style="width:100%"></div>'
    +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>';
   const strip=wrap.querySelector('#slStrip');
   const imgs=[];
@@ -4566,10 +4571,13 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     }catch(e){toast('提取失败：'+String(e&&e.message||e).slice(0,80));}
     b2.textContent=old;b2.disabled=false;
   };
-  wrap.querySelector('#slOn').onchange=e=>{L.on=e.target.checked;store.set('xy_stylelock',L);toast(L.on?'🔒 画风锁已启用，每次出图自动焊接':'画风锁已关闭');};
+  wrap.querySelector('#slOn').onchange=e=>{L.on=e.target.checked;store.set('xy_stylelock',L);slBtnSync();toast(L.on?'🔒 画风锁已启用，每次出图自动焊接':'画风锁已关闭');};
   const vibeTip=()=>{wrap.querySelector('#slVibeTip').textContent=L.img?'已绑定参考图 · NAI 直连出图时原图走 Vibe Transfer（中转站自动用文字指纹）':'未绑定 · 保存时若已点选参考图会自动绑定';};
   wrap.querySelector('#slVibeOff').onclick=()=>{L.img='';store.set('xy_stylelock',L);vibeTip();toast('参考图已解绑，仅用文字指纹');};
   vibeTip();
+  const vibStrV=wrap.querySelector('#slVibStrV'),vibInfoV=wrap.querySelector('#slVibInfoV');
+  wrap.querySelector('#slVibStr').oninput=e=>{L.vibStr=+e.target.value;vibStrV.textContent=e.target.value;store.set('xy_stylelock',L);};
+  wrap.querySelector('#slVibInfo').oninput=e=>{L.vibInfo=+e.target.value;vibInfoV.textContent=e.target.value;store.set('xy_stylelock',L);};
   wrap.querySelector('#slSave').onclick=async()=>{
     L.en=wrap.querySelector('#slEn').value.trim().slice(0,600);
     L.face=wrap.querySelector('#slFace').value.trim().slice(0,300);
@@ -4581,6 +4589,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
 }
 $('#btnComboLab').onclick=openComboLab;
 $('#btnStyleLock').onclick=openStyleLock;
+function slBtnSync(){const L=S.styleLock||{};const el=$('#slBtnTxt');if(el)el.textContent='画风锁（提取画风指纹，防串风漂移）'+(L.on?' · 🔒已启用':'');}
+slBtnSync();
 $('#btnAddArtist').onclick=()=>{ // 添加画师串：搜词库直接加 / 已有去重 / 手动输入，三通道不再只有手打
   openSheet('添加画师串',[]);
   const box=$('#sheetItems');box.innerHTML='';
