@@ -3342,7 +3342,7 @@ function comboAbsorbOff(str){ // 画师成分吸收判定：某条启用旧串�
   const toks=new Set(String(str).split(',').map(norm).filter(Boolean));
   const names=[];
   S.artists.forEach(a=>{
-    if(!a.on)return;
+    if(!a.on||a.p)return; // 🔒 锁定串不受吸收判定熄火，永远听话
     const at=String(a.str||'').split(',').map(norm).filter(Boolean);
     if(at.length&&at.every(t=>toks.has(t))){a.on=false;names.push(a.name||'未命名串');}
   });
@@ -4317,14 +4317,18 @@ function renderArtists(){
       :(libImgAny(a.str)
         ?'<img class="libthumb" loading="lazy" decoding="async" data-k="'+esc(a.str)+'" src="'+LIB_BLIP+'" alt="">'
         :'<span class="libthumb empty sampbtn" data-k="'+esc(a.str)+'">出小样</span>');
-    c.innerHTML=`<div class="row"><span class="libside" data-side="1">${thumb}</span><div class="grow" style="min-width:0"><div class="nm" style="font-size:13px">${esc(a.name||'')}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.str)}</div></div>
+    c.innerHTML=`<div class="row"><span class="libside" data-side="1">${thumb}</span><div class="grow" style="min-width:0"><div class="nm" style="font-size:13px">${a.p?'🔒 ':''}${esc(a.name||'')}</div><div class="meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.str)}</div></div>
       <input type="checkbox" ${a.on?'checked':''} style="width:20px;height:20px;accent-color:var(--accent);flex:0 0 auto"></div>
-      <div class="acts"><button class="mini" data-a="edit">编辑</button><button class="mini sampbtn" data-a="samp" data-k="${esc(a.str)}">出小样</button><button class="mini danger" data-a="del">删除</button></div>`;
+      <div class="acts"><button class="mini" data-a="pin" title="锁定后：不会被吸收判定自动停用，新基因画风常驻">${a.p?'🔒已锁':'🔒锁定'}</button><button class="mini" data-a="edit">编辑</button><button class="mini sampbtn" data-a="samp" data-k="${esc(a.str)}">出小样</button><button class="mini danger" data-a="del">删除</button></div>`;
     const side=c.querySelector('[data-side]');
     side.onclick=async()=>{
       const cur=await libViewOf(a.str); // IndexedDB 引用图现场取回再看
       if(cur)openViewer({text:'画师小样 · '+(a.name||'自定义串'),en:a.str},cur);
       else genSample(a.str,a.name||'自定义串');
+    };
+    c.querySelector('[data-a=pin]').onclick=()=>{
+      a.p=!a.p;persist('xy_artists',S.artists,false);renderArtists();
+      toast(a.p?'🔒 已固化「'+(a.name||'画师串')+'」：不会被吸收判定自动停用，新基因常驻':'已解锁「'+(a.name||'画师串')+'」，恢复自动熄火判定');
     };
     c.querySelector('[data-a=samp]').onclick=()=>genSample(a.str,a.name||'自定义串');
     c.querySelector('input[type=checkbox]').onchange=e=>{
@@ -4423,10 +4427,10 @@ function openComboLab(){
     const str=comboStr();if(!str)return toast('先加原料');
     if(libHas(str)){toast('这条串已经在画师串里了');return;}
     const offNames=comboAbsorbOff(str); // 先熄火被吸收的旧串，再上新生因串
-    S.artists.unshift({id:uid(),name:comboName(true),str:str.slice(0,300),on:true});
+    S.artists.unshift({id:uid(),name:comboName(true),str:str.slice(0,300),on:true,p:true}); // 调和出的新基因串自动🔒固化
     persist('xy_artists',S.artists,false);renderArtists();
     const onN=S.artists.filter(a=>a.on).length;
-    toast('已启用「'+comboName(true)+'」'+(offNames.length?'，自动停用被吸收的 '+offNames.length+' 条旧串（'+offNames.slice(0,2).join('、')+'）':'')+(onN>3?'。⚠️ 当前启用 '+onN+' 条偏多，容易各走各的串风，建议关到 3 条内':''));
+    toast('已启用并🔒固化「'+comboName(true)+'」（新基因常驻，不被自动熄火）'+(offNames.length?'，自动停用被吸收的 '+offNames.length+' 条旧串（'+offNames.slice(0,2).join('、')+'）':'')+(onN>3?'。⚠️ 当前启用 '+onN+' 条偏多，容易各走各的串风，建议关到 3 条内':''));
   };
   $('#clSave').onclick=()=>{
     const str=comboStr();if(!str)return toast('先加原料');
