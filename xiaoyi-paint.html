@@ -6635,6 +6635,10 @@ async function openWmLab(){ // 水印工坊：文字水印 / 素材抠图 / AI �
   renderBody();drawPrev();
 }
 /* ---- 动图工坊 ---- */
+/* ---- 视频 API：独立配置（默认不与出图预设通连） ---- */
+let VA=store.get('xy_vidapi',null)||{linked:false,base:'',key:'',model:'',path:'/video/generations'};
+const vidApiSave=()=>store.set('xy_vidapi',VA);
+const vidPreset=()=>VA.linked?activePreset():(VA.base&&VA.model?{baseUrl:VA.base,key:VA.key,videoModel:VA.model}:null);
 async function openMotionLab(){ // 图组动效（零 API 导出 webm） / AI 视频（需视频模型）
   openSheet('动图工坊（图组动效 · AI 视频）',[]);
   const box=$('#sheetItems');box.innerHTML='';
@@ -6694,18 +6698,36 @@ async function openMotionLab(){ // 图组动效（零 API 导出 webm） / AI �
   }
   function renderB(){
     body.innerHTML='';
-    const p=activePreset();
-    body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:6px">走中转站的 /video/generations 通用接口（提交任务→轮询→出片）。先在「配置」页填好「视频模型」。</div>
+    body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:6px">视频走独立的 API（跟出图预设互不干扰）。通用协议：提交任务 → 轮询 → 出片。</div>
+    <div class="field"><label>视频 API 模式</label><div style="display:flex;gap:6px" id="vaMode">
+      <button id="vaInd" type="button" class="mini${VA.linked?'':' pri'}" style="flex:1">独立 API</button>
+      <button id="vaLink" type="button" class="mini${VA.linked?' pri':''}" style="flex:1">跟随当前出图预设</button>
+    </div></div>
+    <div id="vaFields">
+      <div class="field"><label>接口地址（如 https://api.xx.com）</label><input id="vaBase" value="${esc(VA.base||'')}" placeholder="https://中转站/服务商地址" style="${CINP};width:100%"></div>
+      <div class="field"><label>密钥（这家视频 API 自己的 token）</label><input id="vaKey" type="password" value="${esc(VA.key||'')}" placeholder="sk-..." style="${CINP};width:100%"></div>
+      <div class="field"><label>视频模型名（如 kling-v2 / wan2.2-t2v / minimax-video）</label><input id="vaModel" value="${esc(VA.model||'')}" placeholder="填服务商给的视频模型名" style="${CINP};width:100%"></div>
+      <div class="field"><label>接口路径（一般不用改）</label><input id="vaPath" value="${esc(VA.path||'/video/generations')}" placeholder="/video/generations" style="${CINP};width:100%"></div>
+    </div>
     <div class="field"><label>画面描述</label><textarea id="mtPrompt" rows="3" style="width:100%;border:1px solid var(--rule);background:var(--elev);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--ink)" placeholder="如：男生缓缓抬头，发丝被风吹动，镜头轻微推近"></textarea></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin:4px 0"><input type="checkbox" id="mtUseImg"> 用最近一张图当首帧（图生视频）</label>
     <button id="mtGen" type="button" class="mini pri" style="width:100%">生成视频</button>
     <div id="mtProg" style="font-size:12px;color:var(--faint);margin-top:6px"></div>
     <div id="mtOut" style="margin-top:8px"></div>`;
-    if(!p||!p.videoModel)$('#mtProg').textContent='还没配「视频模型」：去配置页填（如 kling / wan / minimax-video 等中转站提供的视频模型名）';
+    const syncMode=()=>{$('#vaInd').classList.toggle('pri',!VA.linked);$('#vaLink').classList.toggle('pri',VA.linked);$('#vaFields').style.display=VA.linked?'none':'';};
+    $('#vaInd').onclick=()=>{VA.linked=false;vidApiSave();syncMode();};
+    $('#vaLink').onclick=()=>{VA.linked=true;vidApiSave();syncMode();};
+    $('#vaBase').oninput=e=>{VA.base=e.target.value.trim();vidApiSave();};
+    $('#vaKey').oninput=e=>{VA.key=e.target.value.trim();vidApiSave();};
+    $('#vaModel').oninput=e=>{VA.model=e.target.value.trim();vidApiSave();};
+    $('#vaPath').oninput=e=>{VA.path=e.target.value.trim()||'/video/generations';vidApiSave();};
+    syncMode();
+    const vp=vidPreset();
+    if(!vp||!vp.videoModel)$('#mtProg').textContent=VA.linked?'当前出图预设没配「视频模型」：去配置页填，或切「独立 API」':'把上面的接口地址、密钥、视频模型填好就能出片';
     $('#mtGen').onclick=async()=>{
       const pr=$('#mtPrompt').value.trim();if(!pr)return toast('先写画面描述');
-      const pp=activePreset();
-      if(!pp||!pp.videoModel)return toast('先去配置页填「视频模型」');
+      const pp=vidPreset();
+      if(!pp||!pp.videoModel)return toast(VA.linked?'先去配置页填「视频模型」':'先填好接口地址、密钥、视频模型');
       const btn=$('#mtGen');btn.disabled=true;
       const prog=$('#mtProg');let tic=0;
       prog.textContent='提交任务中…';
@@ -6713,7 +6735,7 @@ async function openMotionLab(){ // 图组动效（零 API 导出 webm） / AI �
       try{
         let img=null;
         if($('#mtUseImg').checked){img=lastLibImg();if(img&&String(img).startsWith('@idb:'))img=await idbGet(img.slice(5));}
-        const url=await apiVideo(pp,{prompt:pr,image:img});
+        const url=await apiVideo(pp,{prompt:pr,image:img,path:VA.linked?null:VA.path});
         clearInterval(timer);prog.textContent='出片了！';
         $('#mtOut').innerHTML=`<video src="${esc(url)}" controls autoplay loop style="width:100%;border-radius:14px;border:1px solid var(--rule)"></video>
         <a href="${esc(url)}" download="video-${Date.now()}.mp4" style="display:block;text-align:center;margin-top:6px;font-size:13px;color:var(--accent)">下载视频</a>`;
@@ -6755,11 +6777,12 @@ async function exportSlides(urls,per,fade,prog){ // 图组 → webm：canvas 逐
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='motion-'+Date.now()+'.webm';a.click();
   return blob.size;
 }
-async function apiVideo(p,{prompt,image}){ // 通用视频接口：POST 提交 → 直接返回 url 则用，否则按任务号轮询
+async function apiVideo(p,{prompt,image,path}){ // 通用视频接口：POST 提交 → 直接返回 url 则用，否则按任务号轮询
   const root=apiRoot(p.baseUrl);
+  const ep=path||'/video/generations';
   const body={model:p.videoModel,prompt};
   if(image)body.image=String(image).startsWith('data:')?image:(await idbGet(String(image).slice(5))||image);
-  const r=await fetch(root+'/video/generations',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify(body)});
+  const r=await fetch(root+ep,{method:'POST',headers:authHeaders(p.key),body:JSON.stringify(body)});
   if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,80));
   const j=await r.json();
   const pickUrl=o=>{if(!o||typeof o!=='object')return null;return o.url||o.video_url||(o.output&&(typeof o.output==='string'?o.output:(o.output.url||o.output.video_url)))||null;};
@@ -6769,7 +6792,7 @@ async function apiVideo(p,{prompt,image}){ // 通用视频接口：POST 提交 �
   if(!id)throw new Error('接口没返回视频地址/任务号，检查视频模型名');
   for(let i=0;i<60;i++){
     await new Promise(r2=>setTimeout(r2,5000));
-    let jj={};try{const rr=await fetch(root+'/video/generations/'+id,{headers:authHeaders(p.key)});jj=await rr.json();}catch(e){}
+    let jj={};try{const rr=await fetch(root+ep+'/'+id,{headers:authHeaders(p.key)});jj=await rr.json();}catch(e){}
     const st=String(jj.status||'').toLowerCase();
     u=pickUrl(jj)||(Array.isArray(jj.data)&&pickUrl(jj.data[0]));
     if(u)return u;
