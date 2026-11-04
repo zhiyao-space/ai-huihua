@@ -5122,6 +5122,7 @@ async function runGeneration({userText,extraPrompt='',refImgs=[],promptEn:enOver
   }
   const isNaiM=/nai[\s_-]?diffusion/i.test(String(p.model||'')); // NAI 系用 {} [] 权重语法；其他模型换算数值权重
   const artsOn=S.artists.filter(a=>a.on&&a.str);
+  if(artsOn.length>=2)parts.push('【画师风格基准】本图画风只由下面这几条画师串共同决定：必须把所有启用画师的风格元素（线条、上色、配色、光影）融合成统一的画风，不得偏向其中任何单一画师，也不得引入画师串之外的画风。'); // 多串混融声明：防模型自行倒向某个画师或半路跑偏
   if(artsOn.length)parts.push(artsOn.map(a=>{ // 画师权重：NAI 系 {} 加权（每0.25一层最多4层）/ [] 减权；非 NAI 系逐 tag (tag:权重)
     const w=S.artistsW[a.id]??1;
     if(Math.abs(w-1)<0.05)return a.str;
