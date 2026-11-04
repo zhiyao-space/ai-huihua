@@ -7245,10 +7245,10 @@ function openStyleTest(){ // 画风试金石面板
    +'<div class="field"><label>性别（抽人物池 / AI 写人都遵守）</label><div style="display:flex;gap:8px" id="stG">'
    +'<button class="mini pri" data-g="rand" type="button" style="flex:1">🎲 随机</button><button class="mini" data-g="f" type="button" style="flex:1">♀ 女性</button><button class="mini" data-g="m" type="button" style="flex:1">♂ 男性</button></div></div>'
    +'<div class="field"><label>压测张数</label><div style="display:flex;gap:8px" id="stN">'
-   +'<button class="mini pri" data-n="4" type="button" style="flex:1">4 张</button><button class="mini" data-n="6" type="button" style="flex:1">6 张</button><button class="mini" data-n="8" type="button" style="flex:1">8 张</button></div></div>'
+   +'<button class="mini" data-n="1" type="button" style="flex:1">1 张</button><button class="mini pri" data-n="2" type="button" style="flex:1">2 张</button><button class="mini" data-n="4" type="button" style="flex:1">4 张</button><button class="mini" data-n="6" type="button" style="flex:1">6 张</button><button class="mini" data-n="8" type="button" style="flex:1">8 张</button></div></div>'
    +'<button class="mini pri" id="stGo" type="button" style="width:100%;margin-top:8px">🎲 随机人物 · 开测</button>'
    +'<button class="mini" id="stAI" type="button" style="width:100%;margin-top:8px">✍️ AI 写一套人物形象 · 再测</button>';
-  let n=4,g='rand';
+  let n=2,g='rand'; // 默认 2 张省钱：抽查够用，确认稳了再加大
   wrap.querySelectorAll('#stN .mini').forEach(b=>b.onclick=()=>{n=+b.dataset.n;wrap.querySelectorAll('#stN .mini').forEach(x=>x.classList.toggle('pri',x===b));});
   wrap.querySelectorAll('#stG .mini').forEach(b=>b.onclick=()=>{g=b.dataset.g;wrap.querySelectorAll('#stG .mini').forEach(x=>x.classList.toggle('pri',x===b));});
   wrap.querySelector('#stGo').onclick=async()=>{
