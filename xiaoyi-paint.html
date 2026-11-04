@@ -3914,7 +3914,7 @@ function labDetectSubject(t){ // 从中文输入里识别主角性别；没提�
   return 'none';
 }
 let labMode=false,labImgs={},labBusy={},labSubject=''; // 预览图只存内存，配方记录进 S.labMsgs；labSubject=手动主题，留空按主角标签
-let labCount=store.get('xy_labcount',2),labAN=store.get('xy_laban',2); // 预览张数（1/2/4）与画师数量（1/2/3），默认2省额度
+let labCount=store.get('xy_labcount',2),labAN=Math.min(6,Math.max(1,parseInt(store.get('xy_laban',2),10)||2)); // 预览张数（1/2/4）与画师数量（1-6 自定义），默认2省额度
 const labParseArtists=r=>(r.en.match(/artist:[^,]+/g)||[]).map(s=>s.replace(/^artist:\s*/,'').trim()).filter(Boolean);
 const libDesc=n=>{const it=ARTIST_LIB.find(x=>x.n===n);return it?it.d:'';};
 function connectArtists(r){ // 词库互通：配方画师自动同步进画师串并启用
@@ -3937,7 +3937,11 @@ function labRecipe(text,rot,smart){ // smart=理解模型返回的配方要素�
   const moods=(smart&&smart.moods&&smart.moods.length?smart.moods.map(n=>LAB_MOOD.find(g=>g.n===n)).filter(Boolean):LAB_MOOD.filter(g=>labHit(g,text))).slice(0,2);
   const feels=(smart&&smart.feels&&smart.feels.length?smart.feels.map(n=>LAB_FEEL.find(g=>g.n===n)).filter(Boolean):LAB_FEEL.filter(g=>labHit(g,text))).slice(0,1);
   const extra=(smart&&smart.extra||'').trim();
-  const pair=brush.a[rot%brush.a.length].slice(0,labAN); // 按设置的画师数量取前N位
+  const pool=[];const push=x=>{if(!pool.includes(x))pool.push(x);}; // 先本组→同笔触其余组→全词库兜底，任意数量都有货
+  brush.a[rot%brush.a.length].forEach(push);
+  brush.a.forEach(g=>g.forEach(push));
+  LAB_BRUSH.forEach(b=>b.a.forEach(g=>g.forEach(push)));
+  const pair=pool.slice(0,Math.min(labAN,pool.length)); // 按设置的画师数量取前N位
   return {
     name:[brush.n,...moods.map(x=>x.n),...feels.map(x=>x.n)].join('·'),
     en:[...pair.map(a=>'artist:'+a),brush.s,...moods.map(x=>x.s),...feels.map(x=>x.s),...(extra?[extra]:[]),'best quality, amazing quality, very aesthetic, absurdres'].join(', '),
@@ -4037,7 +4041,7 @@ function renderLabMsgs(){
     list.innerHTML=`<div class="hero">
       <div class="avatar">${AVATAR_SVG}</div>
       <h2>画风实验</h2>
-      <p>一句话说出想要的画风（例：像宫崎骏动画里的夏天、雾气缭绕的清晨森林感、暗黑哥特美男），引擎自动配好画师串配方，出小图预览，挑一张设为专属画风。<br><br>在「配置」页给预设填一个<b>理解模型</b>（最便宜的对话模型就行），实验室就会真正听懂你的大意来配方，词库装不下的要素由 AI 补英文短语；没填就用词库匹配兜底。<br>配方卡上可调「画师数量 ×1/×2/×3」和「预览张数 1/2/4」（默认 2 张省额度），主角按你说的自动识别（说男就是 1boy，说女就是 1girl）。配方画师与「画师串词库」互通，生成即自动同步进画师串。</p>
+      <p>一句话说出想要的画风（例：像宫崎骏动画里的夏天、雾气缭绕的清晨森林感、暗黑哥特美男），引擎自动配好画师串配方，出小图预览，挑一张设为专属画风。<br><br>在「配置」页给预设填一个<b>理解模型</b>（最便宜的对话模型就行），实验室就会真正听懂你的大意来配方，词库装不下的要素由 AI 补英文短语；没填就用词库匹配兜底。<br>配方卡上可调「画师数量（点『画师 ×N』自定义 1-6）」和「预览张数 1/2/4」（默认 2 张省额度），主角按你说的自动识别（说男就是 1boy，说女就是 1girl）。配方画师与「画师串词库」互通，生成即自动同步进画师串。</p>
     </div>`;
     return;
   }
@@ -4065,7 +4069,7 @@ function labMsgEl(m){
       <div class="laben" data-a="copy">${esc(r.en)}</div>
       <div class="labbtns">
         <button data-a="swap">换一批画师</button>
-        <button data-a="an" title="配方带几位画师：1最省且风格最纯，2均衡，3层次多">画师 ×${labAN}</button>
+        <button data-a="an" title="配方带几位画师：点开自定义 1-6；1最纯，2-3均衡，越多越容易崩">画师 ×${labAN}</button>
         <button data-a="cnt" title="预览张数：张数越多越费额度">${labCount} 张预览</button>
         <button data-a="go" class="labpri">${imgs.length?'重新出 '+labCount+' 张预览':'出 '+labCount+' 张预览（512 小图省额度）'}</button>
         ${imgs.some(v=>v&&v!=='err'&&v!=='loading')?`<button data-a="more">继续生成 · 同款再补 ${labCount} 张</button>`:''}
@@ -4090,12 +4094,17 @@ function labMsgEl(m){
     store.set('xy_labcount',labCount);renderLabMsgs();
     toast('预览张数：'+labCount+' 张'+(labCount===1?'（最省）':labCount===2?'（省额度）':'（出得全）'));
   };
-  wrap.querySelector('[data-a=an]').onclick=()=>{ // 画师数量循环 1→2→3→1，当前卡立即按新数量重配
-    labAN=labAN===1?2:labAN===2?3:1;
-    store.set('xy_laban',labAN);
-    m.recipe=labRecipe(m.text,m.rot,m.smartData);connectArtists(m.recipe);
-    renderLabMsgs();
-    toast('配方画师数量：×'+labAN+(labAN===1?'（单画师，风格最纯）':labAN===2?'（双画师均衡）':'（三画师层次多）'));
+  wrap.querySelector('[data-a=an]').onclick=()=>{ // 画师数量自定义 1-6：当前卡立即按新数量重配
+    openTextOv('画师数量（1-6）',String(labAN),{editable:true,extra:[
+      {label:'取消',cls:'',fn:()=>closeOverlays()},
+      {label:'保存',cls:'pri',fn:v=>{
+        const n=Math.min(6,Math.max(1,parseInt(v,10)||2));labAN=n;store.set('xy_laban',n);
+        closeOverlays();
+        m.recipe=labRecipe(m.text,m.rot,m.smartData);connectArtists(m.recipe);
+        renderLabMsgs();
+        toast('配方画师数量：×'+n+(n===1?'（单画师，风格最纯）':n>=4?'（赌狗档，五官崩风险高）':'（均衡）'));
+      }},
+    ]});
   };
   wrap.querySelectorAll('[data-a=artist]').forEach(b=>{b.onclick=()=>labToggleArtist(b.dataset.n);});
   const grid=wrap.querySelector('[data-a=grid]');
