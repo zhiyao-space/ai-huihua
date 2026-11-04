@@ -2492,7 +2492,7 @@ function openParams(){
         +thm
         +'<span style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.name||a.str)+'</span>'
         +'<input type="range" min="0.2" max="1.5" step="0.05" value="'+w+'" title="画师权重" style="width:76px;flex:0 0 auto">'
-        +'<span class="wv" style="font-size:11px;color:var(--muted);width:32px;text-align:right;flex:0 0 auto">'+w.toFixed(2)+'</span>';
+        +'<span class="wv" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;min-width:60px"><b style="font-size:11px;color:var(--muted);font-weight:600">'+w.toFixed(2)+'</b><i style="font-style:normal;font-size:9px;color:var(--faint)">'+wMean(w)+'</i></span>';
       const thImg=row.querySelector('img');
       if(thImg)thImg.onclick=async()=>{
         const cur=await libViewOf(a.str);
@@ -2508,7 +2508,7 @@ function openParams(){
       const rg=row.querySelector('input[type=range]');
       rg.oninput=()=>{
         S.artistsW[a.id]=+rg.value;store.set('xy_artists_w',S.artistsW);
-        row.querySelector('.wv').textContent=(+rg.value).toFixed(2);
+        const wvv=row.querySelector('.wv');wvv.querySelector('b').textContent=(+rg.value).toFixed(2);wvv.querySelector('i').textContent=wMean(+rg.value);
         if(!a.on){a.on=true;row.querySelector('input[type=checkbox]').checked=true;row.style.opacity='1';row.style.borderColor='var(--rule2)';persist('xy_artists',S.artists,false);renderArtists();}
       };
       artQuick.appendChild(row);
@@ -4342,6 +4342,16 @@ let comboIng=[]; // 配方原料（保留上次配方）：[{n,s,w,k}] k=artist�
 let comboShot=''; // 上次预览图（重开弹层还原）
 let comboBusy=false;
 function prWrap(s,w){w=parseFloat(w)||1;return Math.abs(w-1)<0.01?s:'('+s+':'+String(parseFloat(w.toFixed(2)))+')';}
+function wMean(w){ // 权重概意：数值旁边直接显示人话，不用背数表
+  w=parseFloat(w)||1;
+  if(w<0.45)return '近乎去掉';
+  if(w<0.7)return '大幅弱化';
+  if(w<0.9)return '轻微弱化';
+  if(w<=1.05)return '标准';
+  if(w<=1.2)return '强调·主画师';
+  if(w<=1.35)return '重强调·防崩';
+  return '高危·易崩线';
+}
 function comboStr(){return comboIng.map(x=>prWrap(x.s,x.w)).join(', ');}
 function comboName(autoOnly){
   const el=$('#clName');const v=el?el.value.trim():'';
@@ -4504,10 +4514,10 @@ function renderComboLab(){
       row.innerHTML=slot+badge
         +'<span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'</span>'
         +'<input type="range" min="0.8" max="1.4" step="0.05" value="'+x.w+'" style="flex:1.1;min-width:64px">'
-        +'<b style="font-size:11px;color:var(--muted);flex:0 0 32px;text-align:right">×'+String(parseFloat(x.w.toFixed(2)))+'</b>'
+        +'<span class="cw" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;min-width:66px"><b style="font-size:11px;color:var(--muted);font-weight:600">×'+String(parseFloat(x.w.toFixed(2)))+'</b><i style="font-style:normal;font-size:9px;color:var(--faint)">'+wMean(x.w)+'</i></span>'
         +'<button type="button" style="border:0;background:transparent;color:var(--danger);font-size:13px;padding:2px 3px;flex:0 0 auto">✕</button>';
       const rg=row.querySelector('input[type=range]');
-      rg.oninput=e=>{x.w=parseFloat(e.target.value);row.querySelector('b').textContent='×'+String(parseFloat(x.w.toFixed(2)));renderComboPrev();};
+      rg.oninput=e=>{x.w=parseFloat(e.target.value);const cv=row.querySelector('.cw');cv.querySelector('b').textContent='×'+String(parseFloat(x.w.toFixed(2)));cv.querySelector('i').textContent=wMean(x.w);renderComboPrev();};
       row.querySelector('button').onclick=()=>{comboIng.splice(i,1);renderComboLab();renderComboRes($('#clQ')?$('#clQ').value:'');};
       box.appendChild(row);
     });
