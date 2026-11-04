@@ -4540,7 +4540,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
    +'<div style="display:flex;align-items:center;gap:8px;border:1px dashed var(--rule);border-radius:12px;padding:8px 12px;margin-top:8px"><span id="slVibeTip" style="font-size:11.5px;color:var(--muted);flex:1;line-height:1.5"></span><button class="mini" id="slVibeOff" type="button" style="flex:0 0 auto">解绑</button></div></div>'
    +'<div class="field"><label>Vibe 参考强度 <b id="slVibStrV">'+(L.vibStr==null?'0.6':L.vibStr)+'</b>（NAI 直连生效 · 越高锁得越死，过高会糊脸）</label><input type="range" id="slVibStr" min="0.1" max="1" step="0.05" value="'+(L.vibStr==null?0.6:L.vibStr)+'" style="width:100%"></div>'
    +'<div class="field"><label>信息提取 <b id="slVibInfoV">'+(L.vibInfo==null?'0.7':L.vibInfo)+'</b>（越高越抠画风细节，过低等于没锁）</label><input type="range" id="slVibInfo" min="0.1" max="1" step="0.05" value="'+(L.vibInfo==null?0.7:L.vibInfo)+'" style="width:100%"></div>'
-   +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>';
+   +'<button class="mini pri" id="slSave" type="button" style="width:100%;margin-top:10px">保存画风锁</button>'
+   +'<button class="mini" id="slTest" type="button" style="width:100%;margin-top:8px">🧪 画风试金石：锁好后换人物压测</button>';
   const strip=wrap.querySelector('#slStrip');
   const imgs=[];
   for(let i=S.msgs.length-1;i>=0&&imgs.length<10;i--){const m=S.msgs[i];if(m.kind==='image'){const a=((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean);a.forEach(v=>{if(imgs.length<10)imgs.push(v);});}}
@@ -4566,6 +4567,7 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     };
     r.readAsDataURL(f);
   };
+  wrap.querySelector('#slTest').onclick=openStyleTest; // 一键跳试金石：锁好立刻验证
   const b1=wrap.querySelector('#slGetStyle'),b2=wrap.querySelector('#slGetFace');
   const busy=b=>{b1.disabled=b;b2.disabled=b;if(b)b1.textContent='提取中…';else b1.textContent='🎨 提取画风';};
   b1.onclick=async()=>{
@@ -4726,6 +4728,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'角色关系图谱（关系网可视化）',fn:openRelMap},
     {icon:'brush',txt:'海报拼贴工坊（杂志/专辑/拍立得）',fn:openPosterLab},
     {icon:'quote',txt:'画风锁（提取画风指纹 · 防串风）',fn:openStyleLock},
+    {icon:'brush',txt:'画风试金石（随机人物压测画风）',fn:openStyleTest},
   ]);
 };
 
@@ -7194,6 +7197,68 @@ async function ocOutfitShoot(card,ot,btn){ // 一键换装出图：性别 tag + 
 
 /* ===== 角色关系图谱：环形 SVG 关系网，点头像高亮，可导出 PNG ===== */
 const PFAM='system-ui,-apple-system,"PingFang SC","Noto Sans SC",sans-serif';
+/* ---- 画风试金石：同一画风下换多个人物形象压测，检验画风锁/画师串稳不稳 ---- */
+const STT_WHO=['银发红瞳少女','金发双马尾萝莉','黑长直文静少女','红发女剑士','蓝发学生会长','紫发大小姐','棕发眼镜少年','黑发青年剑客','白发神秘大叔','橘发元气小孩','灰发退役老兵','粉发偶像歌手'];
+const STT_POSE=['回眸微笑','挥剑冲刺','静坐看书','奔跑中回头','撑伞远望','靠墙抱臂','张开双臂拥抱风','单膝跪地喘息','举杯致意','睡眼惺忪伸懒腰'];
+const STT_FIT=['JK 制服','白婚纱','哥特萝莉装','厚重机甲盔甲','浴衣和服','运动球衣','巫师长袍','牛仔夹克','古代汉服','西装正装'];
+const STT_SCN=['樱花树下','雨夜霓虹街头','阳光洒落的教室','雪山之巅','咖啡馆窗边','烽烟战场废墟','海边日落','幽暗森林小径','未来都市天桥','古镇石桥'];
+function sttCompose(){ // 随机拼一个人物形象测试句
+  const pk=a=>a[Math.random()*a.length|0];
+  return '画一张画风测试图：'+pk(STT_WHO)+'，'+pk(STT_POSE)+'，穿'+pk(STT_FIT)+'，背景是'+pk(STT_SCN)+'。';
+}
+async function apiCharAI(p,idea,n){ // AI 按方向写 n 个差异极大的人物形象描述
+  if(!p.chatModel)throw new Error('未配置理解模型，去「配置」页选一个');
+  const root=apiRoot(p.baseUrl);
+  const sys='你是AI绘画人物设计专家。写出 '+n+' 个差异极大的人物形象描述：性别、年龄段、发型发色、服装、气质、动作、场景都尽量拉开差距，每条40字内中文一句话，直接可当绘画提示词。输出严格 JSON，无 markdown 无解释：{"list":["...","..."]}';
+  const r=await fetch(root+'/chat/completions',{method:'POST',headers:authHeaders(p.key),body:JSON.stringify({model:p.chatModel,messages:[{role:'user',content:sys+(idea?'\n用户想要的形象方向：'+idea+'\n（在方向内做变化）':'\n自由发挥，人物之间天差地别')}],temperature:0.8,max_tokens:700})});
+  if(!r.ok){const t=await r.text().catch(()=>'');throw new Error('HTTP '+r.status+(t&&t.length<120?' '+t:''));}
+  const j=await r.json();
+  const c=(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content)||'';
+  const mm=c.match(/\{[\s\S]*\}/);
+  if(!mm)throw new Error('模型没返回人物，重试一次');
+  const o=JSON.parse(mm[0]);
+  const list=(o.list||[]).map(x=>String(x).trim()).filter(Boolean).slice(0,n);
+  if(!list.length)throw new Error('人物列表为空，重试一次');
+  return list;
+}
+async function sttRun(list,btn){ // 顺序压测：每条人物走完整管线（画风锁/画师串/画风/Vibe 全生效）
+  const p=activePreset();
+  if(!p||!p.baseUrl||!p.model){toast('先去配置页把绘画 API 配好');return;}
+  if(S.busy){toast('当前正在生成，稍等');return;}
+  btn.disabled=true;const old=btn.textContent;btn.textContent='压测中…';
+  toast('画风压测开始：连出 '+list.length+' 张，中途请勿操作');
+  for(let i=0;i<list.length;i++){
+    try{await runGeneration({userText:'【画风试金石 '+(i+1)+'/'+list.length+'】'+list[i]});}catch(e){}
+  }
+  btn.disabled=false;btn.textContent=old;
+  toast('压测完成：对比这几张画风是否一致，漂了就调参考强度或精简画师串');
+}
+function openStyleTest(){ // 画风试金石面板
+  openSheet('画风试金石 · 画风压测',[]);
+  const box=$('#sheetItems');box.innerHTML='';
+  const wrap=document.createElement('div');wrap.style.cssText='padding:4px 12px 14px';box.appendChild(wrap);
+  wrap.innerHTML='<div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">同一套画风（画风锁 + 画师串 + 画风预设 + Vibe）下，连续换多个完全不同的人物形象出图：<b>张张画风都稳 = 锁成功</b>；出现漂移就把画风锁参考强度调高、精简画师串，或锁 Seed 再测。</div>'
+   +'<div class="field"><label>想要的人物形象方向（可空 = 完全随机）</label><input id="stIdea" style="width:100%;'+CINP+'" placeholder="如：机甲少女、古代侠客、校园日常…"></div>'
+   +'<div class="field"><label>压测张数</label><div style="display:flex;gap:8px" id="stN">'
+   +'<button class="mini pri" data-n="4" type="button" style="flex:1">4 张</button><button class="mini" data-n="6" type="button" style="flex:1">6 张</button><button class="mini" data-n="8" type="button" style="flex:1">8 张</button></div></div>'
+   +'<button class="mini pri" id="stGo" type="button" style="width:100%;margin-top:8px">🎲 随机人物 · 开测</button>'
+   +'<button class="mini" id="stAI" type="button" style="width:100%;margin-top:8px">✍️ AI 写一套人物形象 · 再测</button>';
+  let n=4;
+  wrap.querySelectorAll('#stN .mini').forEach(b=>b.onclick=()=>{n=+b.dataset.n;wrap.querySelectorAll('#stN .mini').forEach(x=>x.classList.toggle('pri',x===b));});
+  wrap.querySelector('#stGo').onclick=async()=>{
+    const list=[];for(let i=0;i<n;i++)list.push(sttCompose());
+    await sttRun(list,wrap.querySelector('#stGo'));
+  };
+  wrap.querySelector('#stAI').onclick=async()=>{
+    const b=wrap.querySelector('#stAI');const old=b.textContent;b.textContent='AI 构思中…';b.disabled=true;
+    try{
+      const list=await apiCharAI(activePreset(),wrap.querySelector('#stIdea').value.trim(),n);
+      await sttRun(list,b);
+    }catch(e){toast('AI 写人物失败：'+String(e&&e.message||e).slice(0,60));b.textContent=old;b.disabled=false;}
+  };
+}
+
+
 function openRelMap(){
   const cards=ocCards().filter(Boolean);
   if(!cards.length)return toast('先去 OC 里世界建几张角色卡');
