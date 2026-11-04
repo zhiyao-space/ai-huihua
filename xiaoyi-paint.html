@@ -4545,13 +4545,14 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
   const strip=wrap.querySelector('#slStrip');
   const imgs=[];
   for(let i=S.msgs.length-1;i>=0&&imgs.length<10;i--){const m=S.msgs[i];if(m.kind==='image'){const a=((m.imgs&&m.imgs.length)?m.imgs:[m.img]).filter(Boolean);a.forEach(v=>{if(imgs.length<10)imgs.push(v);});}}
-  let sel=null;
+  let sel=null,picked=false; // picked：用户手动选过就禁止自动预选抢焦点（修复选完图被第一张异步加载完的自动选中顶掉的 bug）
+  const pick=im=>{picked=true;sel=im.src;strip.querySelectorAll('img').forEach(x=>x.style.borderColor='transparent');im.style.borderColor='#111';};
   imgs.forEach((v,i)=>{
     const im=document.createElement('img');im.style.cssText='width:56px;height:56px;border-radius:10px;object-fit:cover;border:2px solid transparent;cursor:pointer;flex:0 0 auto';
     if(String(v).startsWith('@idb:'))idbGet(v.slice(5)).then(d=>{if(d)im.src=d;});else im.src=v;
-    im.onclick=()=>{sel=im.src;strip.querySelectorAll('img').forEach(x=>x.style.borderColor='transparent');im.style.borderColor='#111';};
+    im.onclick=()=>pick(im);
     strip.appendChild(im);
-    if(i===0)setTimeout(()=>{if(im.complete&&im.naturalWidth)im.onclick();else im.onload=im.onclick;},0);
+    if(i===0)setTimeout(()=>{if(picked)return;const go=()=>{if(!picked)pick(im);};if(im.complete&&im.naturalWidth)go();else im.onload=go;},0);
   });
   if(!imgs.length)strip.innerHTML='<span style="font-size:11.5px;color:var(--faint)">还没有出图记录，可从本地上传参考图</span>';
   const fu=wrap.querySelector('#slFile'); // 本地上传：任何图都能当提取源，不受会话出图记录限制
@@ -4562,8 +4563,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     r.onload=()=>{
       const im=document.createElement('img');im.src=String(r.result);
       im.style.cssText='width:56px;height:56px;border-radius:10px;object-fit:cover;border:2px solid transparent;cursor:pointer;flex:0 0 auto';
-      im.onclick=()=>{sel=im.src;strip.querySelectorAll('img').forEach(x=>x.style.borderColor='transparent');im.style.borderColor='#111';};
-      strip.prepend(im);im.onclick();fu.value='';
+      im.onclick=()=>pick(im);
+      strip.prepend(im);pick(im);fu.value='';
     };
     r.readAsDataURL(f);
   };
