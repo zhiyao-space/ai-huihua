@@ -4581,7 +4581,8 @@ function openStyleLock(){ // 画风锁：从满意出图提取画风指纹/长�
     b2.textContent=old;b2.disabled=false;
   };
   wrap.querySelector('#slOn').onchange=e=>{L.on=e.target.checked;store.set('xy_stylelock',L);slBtnSync();toast(L.on?'🔒 画风锁已启用，每次出图自动焊接':'画风锁已关闭');};
-  const vibeTip=()=>{wrap.querySelector('#slVibeTip').textContent=L.img?'已绑定参考图 · NAI 直连出图时原图走 Vibe Transfer（中转站自动用文字指纹）':'未绑定 · 保存时若已点选参考图会自动绑定';};
+  const chTip=()=>{try{return (activePreset()||{}).type==='nai'?'当前预设 NAI 直连 → Vibe 原图通道生效':'当前预设中转站 → 接口无 Vibe 参数，自动退回文字指纹+锁 Seed';}catch(e){return '';}};
+  const vibeTip=()=>{wrap.querySelector('#slVibeTip').textContent=(L.img?'已绑定参考图 · ':'未绑定参考图 · 保存时若已点选会自动绑定 · ')+chTip();};
   wrap.querySelector('#slVibeOff').onclick=()=>{L.img='';store.set('xy_stylelock',L);vibeTip();toast('参考图已解绑，仅用文字指纹');};
   vibeTip();
   const vibStrV=wrap.querySelector('#slVibStrV'),vibInfoV=wrap.querySelector('#slVibInfoV');
