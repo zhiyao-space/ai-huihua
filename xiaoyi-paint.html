@@ -6020,7 +6020,11 @@ function ocEdit(id){
     const btn=w.querySelector('#ocAvaBtn');btn.textContent='画头像中…';
     try{
       const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
-      const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, portrait, upper body, looking at viewer, simple background, '+tags+(isNai?', very aesthetic, masterpiece, no text':', best quality, absurdres'),size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
+      const QT=isNai?', very aesthetic, masterpiece, no text':', best quality, absurdres';
+      const artsOn=S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ');
+      const prompt=[styleLockEn(),(c.gender==='f'?'1girl':'1boy')+', solo, portrait, upper body, looking at viewer, simple background, '+tags,artsOn,QT.replace(/^, /,'')].filter(Boolean).join(', ');
+      const vref=(p.type==='nai')?await styleLockVibe():''; // OC 头像同样焊画风锁：卡面形象与整体画风一致
+      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG,refDataUrls:vref?[vref]:[]});
       if(!src){toast('接口没返回图片');btn.textContent='🎨 画头像';return;}
       c.img=await shrinkImg(src,128,.82); // 缩图存卡上，体积小直接进 localStorage
       btn.textContent='✅ 重画头像';toast('头像画好了，记得点保存');
@@ -6143,7 +6147,7 @@ async function ocSelfie(c){
   try{
     const isNai=/nai[\s_-]?diffusion/i.test(String(p.model||''));
     const QT=isNai?'very aesthetic, masterpiece, no text':'best quality, amazing quality, absurdres';
-    const src=await apiGenerate(p,{prompt:(c.gender==='f'?'1girl':'1boy')+', solo, selfie, upper body, looking at viewer, '+(c.tags||'')+', '+QT,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
+    const src=await apiGenerate(p,{prompt:[styleLockEn(),(c.gender==='f'?'1girl':'1boy')+', solo, selfie, upper body, looking at viewer, '+(c.tags||''),(S.artists.filter(x=>x.on&&x.str).map(x=>x.str).join(', ')||null),QT].filter(Boolean).join(', '),size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG,refDataUrls:(p.type==='nai')?(await styleLockVibe()||undefined):undefined}); // 自拍也焊画风锁
     if(!src)return toast('接口没返回图片');
     const th=await shrinkImg(src,160,.75);
     S.ocMsgs.push({who:c.id,n:c.name,t:'📸（发了一张自拍）',img:th,ts:Date.now()});
@@ -6224,8 +6228,9 @@ $('#ocFEGo').onclick=async()=>{
   const done=[];
   for(const fe of OC_FES){
     try{
-      const prompt=(LKs?LKs+', ':'')+(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||'')+', '+fe[1]+(artsOn?', '+artsOn:'')+', '+QT;
-      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG});
+      const prompt=[styleLockEn(),(c.gender==='f'?'1girl':'1boy')+', solo, bust shot, looking at viewer, '+(c.tags||''),fe[1],artsOn,QT].filter(Boolean).join(', ');
+      const vfe=(p.type==='nai')?await styleLockVibe():''; // 表情包四连拍补上画风锁参考图
+      const src=await apiGenerate(p,{prompt,size:isNai?'832x1216':'512x512',neg:isNai?NEG_NAI:SAMP_NEG,refDataUrls:vfe?[vfe]:[]});
       if(src)done.push({k:fe[0],src});
     }catch(e){}
   }
