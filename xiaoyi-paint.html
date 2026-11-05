@@ -1922,10 +1922,49 @@ async function showImgInfo(src){
     const body=(r.t.parameters||r.t.Description||JSON.stringify(c,null,2));
     const extra=[
       {label:'还原参数到当前配置',cls:'pri',fn:()=>{restoreFromMeta(c,r);}},
+      {label:'🔒 设为画风锁参考图（Vibe 原图钉画风）',fn:async()=>{
+        try{
+          const d=await toDataURL(src);if(!d)throw new Error('读不出图片');
+          const k='sl:'+Date.now();await idbSet(k,d);
+          const L=S.styleLock||{on:false,en:'',face:'',img:''};L.img='@idb:'+k;store.set('xy_stylelock',L);
+          openStyleLock();
+          toast('参考图已绑入画风锁，进去点「保存画风锁」并勾选启用');
+        }catch(e){toast(String(e.message||e).slice(0,90));}
+      }},
+      {label:'🧬 AI 提取画风串进锁（需理解模型）',fn:async()=>{
+        try{
+          const p=activePreset();if(!p||!p.chatModel)throw new Error('先去「配置」页配好理解模型');
+          const d=await toDataURL(src);if(!d)throw new Error('读不出图片');
+          toast('画风提取中…');
+          const o=await apiVibe(p,[d]);
+          const L=S.styleLock||{on:false,en:'',face:'',img:''};L.en=o.en;store.set('xy_stylelock',L);
+          openStyleLock();
+          toast('画风串已写入画风锁：'+o.name);
+        }catch(e){toast('提取失败：'+String(e.message||e).slice(0,90));}
+      }},
+      {label:'📜 正面词存为画师串',fn:()=>{
+        let prompt=String(c.prompt||'');
+        try{if(src&&r.t&&r.t.parameters)prompt=a1111Parse(r.t.parameters).prompt||prompt;}catch(e){}
+        prompt=prompt.trim();if(!prompt)return toast('这张图的元数据里没有正面词');
+        const name=(c.model?String(c.model).slice(0,18):'导入画风');
+        S.artists.push({id:uid(),name:name+' · 元数据',str:prompt,on:false,lock:true,mine:true});
+        store.set('xy_artists',S.artists);
+        toast('已存为画师串（未启用），去画风页勾选试试');
+      }},
       {label:'复制元数据',fn:()=>copyTxt(body,'元数据已复制')}
     ];
-    openTextOv('图片元数据'+(c.provider==='nai'?' · NAI':''),body,{extra});
+    openTextOv('图片元数据'+(c.provider==='nai'?' · NAI':'')+(String(c.model||'').match(/nai/i)?' · NAI':''),body,{extra});
   }catch(e){toast(String(e.message||e).slice(0,90));}
+}
+async function importMetaStyle(){ // 外部 NAI/A1111 图片元数据导入：选中本地 PNG → 读回 prompt/参数 → 一键钉成画风锁
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/png,image/jpeg,image/webp';
+  inp.onchange=()=>{
+    const f=inp.files&&inp.files[0];if(!f)return;
+    const rd=new FileReader();
+    rd.onload=()=>showImgInfo(String(rd.result));
+    rd.readAsDataURL(f);
+  };
+  inp.click();
 }
 
 /* ================= 同 Seed 画师串矩阵 ================= */
@@ -4755,6 +4794,7 @@ $('#btnPlus').onclick=()=>{
     {icon:'quote',txt:'角色关系图谱（关系网可视化）',fn:openRelMap},
     {icon:'brush',txt:'海报拼贴工坊（杂志/专辑/拍立得）',fn:openPosterLab},
     {icon:'quote',txt:'画风锁（提取画风指纹 · 防串风）',fn:openStyleLock},
+    {icon:'eye',txt:'图片元数据导入（NAI 图 → 一键成画风锁）',fn:importMetaStyle},
     {icon:'brush',txt:'画风试金石（随机人物压测画风）',fn:openStyleTest},
   ]);
 };
