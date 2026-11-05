@@ -224,7 +224,7 @@ input,textarea,select{font-family:inherit; color:var(--ink);}
 .libchip.added{opacity:.5; border-style:dashed;}
 .libthumb{width:46px; height:46px; border-radius:10px; object-fit:cover; display:block;}
 .libside{position:relative; display:inline-block;}
-.libreroll{position:absolute; right:-5px; bottom:-5px; width:19px; height:19px; border-radius:50%; background:var(--elev); border:1px solid var(--rule2); color:var(--muted); font-size:11px; line-height:17px; text-align:center; z-index:2;}
+.libreroll{position:absolute; right:-5px; bottom:-5px; width:19px; height:19px; border-radius:50%; background:var(--elev); border:1px solid var(--rule2); color:var(--muted); font-size:11px; line-height:17px; text-align:center; z-index:2; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;}
 .libthumb.empty{display:flex; align-items:center; justify-content:center; border:1px dashed var(--rule2); color:var(--faint); font-size:10px; background:var(--elev);}
 .libthumb.empty:active{background:var(--hover);}
 .card .libthumb{width:40px; height:40px;}
@@ -3454,6 +3454,19 @@ function libChipHTML(it){
   return '<span class="libside" data-side="1">'+thumb+'</span>'
     +'<span class="libtxt"><b>'+esc(it.n)+(added?' · 已加入':'')+'</b><span>'+esc(it.s)+'</span>'+(it.d?'<em>'+esc(it.d)+'</em>':'')+'</span>';
 }
+function holdRegen(el,getIt){ // ↻ 重出改为长按0.6秒触发：点小样看大图时误碰不再烧额度
+  let t0=0,sx=0,sy=0;
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('pointerdown',e=>{t0=Date.now();sx=e.clientX;sy=e.clientY;});
+  el.addEventListener('pointerup',e=>{
+    e.stopPropagation();e.preventDefault();
+    if(!t0)return;
+    const dt=Date.now()-t0,moved=Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy);t0=0;
+    if(dt>=600&&moved<14){const it=getIt();if(it)genSample(it.s,it.n);}
+    else if(moved<14)toast('长按 ↻ 0.6 秒才会重出小样（防误触烧额度）');
+  });
+  el.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();}); // 轻点一律拦下，只认长按
+}
 /* ================= 词库真实小样：用你自己的模型出一张统一测试图，所见即所得 ================= */
 let sampBusy=null; // 正在出小样的串内容
 let batchRun=false; // 批量出小样进行中
@@ -3599,7 +3612,7 @@ function renderLibList(){
     const side=b.querySelector('[data-side]');
     if(side){
       const rr=side.querySelector('.libreroll');
-      if(rr)rr.onclick=e=>{e.stopPropagation();const it=libFiltered()[i];if(it)genSample(it.s,it.n);};
+      if(rr)holdRegen(rr,()=>libFiltered()[i]); // 长按0.6s才重出，轻点看图路径走下面的 side.onclick
       side.onclick=async e=>{ // 点小图区：有图看大图（IndexedDB 引用图现场取回），真没图才出小样（↻ 角标除外）
         e.stopPropagation();
         if(e.target.closest('.libreroll')){const it2=libFiltered()[i];if(it2)genSample(it2.s,it2.n);return;}
@@ -3628,7 +3641,7 @@ function renderStyleLib(){
     const b=document.createElement('button');b.className='libchip';
     b.innerHTML=libChipHTML(it);
     const rr=b.querySelector('.libreroll');
-    if(rr)rr.onclick=e=>{e.stopPropagation();genSample(it.s,it.n);}; // 画风页推荐词条：↻ 只重roll，不触发加入
+    if(rr)holdRegen(rr,()=>it); // 画风页推荐词条：长按↻只重roll，不触发加入；轻点仍走整卡加入
     b.onclick=()=>libAdd(it);
     box.appendChild(b);
   });
